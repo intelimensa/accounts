@@ -1,0 +1,163 @@
+/* Palette matches AxoSync's Theme.axaml (AxoSync/Styles/Theme.axaml) so the portal and the
+   desktop app read as one product. */
+:root {
+  --ia-bg: #F7F8F9;
+  --ia-card-bg: #FFFFFF;
+  --ia-border: #E5E7EB;
+  --ia-surface-muted: #F3F4F6;
+  --ia-heading: #111827;
+  --ia-subheading: #374151;
+  --ia-body: #1F2937;
+  --ia-muted: #6B7280;
+  --ia-faint: #9CA3AF;
+  --ia-accent: #007AFF;
+  --ia-accent-hover: #0056CC;
+  --ia-accent-muted: #DBEAFE;
+
+  color-scheme: light dark;
+
+  --bs-body-bg: var(--ia-bg);
+  --bs-body-color: var(--ia-body);
+  --bs-border-color: var(--ia-border);
+  --bs-primary: var(--ia-accent);
+  --bs-primary-rgb: 0, 122, 255;
+  --bs-link-color: var(--ia-accent);
+  --bs-link-color-rgb: 0, 122, 255;
+  --bs-link-hover-color: var(--ia-accent-hover);
+  --bs-secondary-color: var(--ia-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ia-bg: #161B22;
+    --ia-card-bg: #1E2530;
+    --ia-border: #2D3646;
+    --ia-surface-muted: #232B38;
+    --ia-heading: #F1F5F9;
+    --ia-subheading: #CBD5E1;
+    --ia-body: #E2E8F0;
+    --ia-muted: #94A3B8;
+    --ia-faint: #64748B;
+    --ia-accent-hover: #3399FF;
+    --ia-accent-muted: #1E3A5F;
+  }
+}
+
+body {
+  background-color: var(--ia-bg);
+  color: var(--ia-body);
+}
+
+.site-header {
+  background-color: var(--ia-card-bg);
+  border-bottom: 1px solid var(--ia-border);
+}
+
+.site-header .navbar-brand,
+.site-header .nav-link {
+  color: var(--ia-heading) !important;
+}
+
+.site-header .nav-link:hover {
+  color: var(--ia-accent) !important;
+}
+
+.site-footer {
+  background-color: var(--ia-card-bg);
+  border-top: 1px solid var(--ia-border);
+  color: var(--ia-muted);
+}
+
+.site-footer a {
+  color: var(--ia-muted);
+}
+
+.hero {
+  padding: 4rem 0 3rem;
+}
+
+.hero h1 {
+  color: var(--ia-heading);
+  font-weight: 700;
+}
+
+.hero .lead {
+  color: var(--ia-subheading);
+  max-width: 40rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.btn-ia-primary {
+  background-color: var(--ia-accent);
+  border-color: var(--ia-accent);
+  color: #fff;
+}
+
+.btn-ia-primary:hover {
+  background-color: var(--ia-accent-hover);
+  border-color: var(--ia-accent-hover);
+  color: #fff;
+}
+
+.btn-ia-outline {
+  background-color: transparent;
+  border: 1px solid var(--ia-border);
+  color: var(--ia-heading);
+}
+
+.btn-ia-outline:hover {
+  border-color: var(--ia-accent);
+  color: var(--ia-accent);
+}
+
+.feature-card {
+  background-color: var(--ia-card-bg);
+  border: 1px solid var(--ia-border);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  height: 100%;
+}
+
+.feature-card h3 {
+  color: var(--ia-heading);
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+  color: var(--ia-muted);
+  margin-bottom: 0;
+}
+
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+body {
+  margin-bottom: 60px;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+  color: var(--bs-secondary-color);
+  text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+  text-align: start;
+}

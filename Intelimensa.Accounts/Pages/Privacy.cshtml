@@ -1,0 +1,244 @@
+@page
+@model PrivacyModel
+@{
+    ViewData["Title"] = "Privacy Policy";
+}
+<h1>@ViewData["Title"]</h1>
+<p><em>Last updated: 9 September 2026</em></p>
+
+<p>
+    This Privacy Policy explains how <strong>Intelimensa SRL</strong> ("Intelimensa," "we," "us," or "our")
+    collects, uses, and protects personal data when you create and use an account through this service
+    (<code>accounts.intelimensa.com</code>) in connection with the AxoSync application and its associated
+    MindStone BCI devices. This service handles account access and the delivery of encrypted device
+    configuration files; it does not process the biometric or neural signal data recorded by your device
+    (see "Scope" below).
+</p>
+
+<p>
+    We process personal data in accordance with Regulation (EU) 2016/679 (the "GDPR") and Romanian Law
+    no. 190/2018 on the implementation of the GDPR.
+</p>
+
+<h2>1. Data Controller</h2>
+<p>
+    The data controller responsible for your personal data is:
+</p>
+<address>
+    Intelimensa SRL<br />
+    Strada Madách Imre 30, 400464 Cluj-Napoca<br />
+    Romania<br />
+    Company registration number (CUI/J): [Registration Number]<br />
+    Contact e-mail: mailto:contact@intelimensa.com
+</address>
+<p>
+    If we have appointed a Data Protection Officer, their contact details will be listed here: [DPO Contact
+    Details, if applicable].
+</p>
+
+<h2>2. Scope of this Policy</h2>
+<p>
+    This service is used to support a research cohort using loaned MindStone BCI devices. It provides:
+</p>
+<ul>
+    <li>Self-service account registration and login for the AxoSync desktop application;</li>
+    <li>A status page showing the device configuration assigned to your account by Intelimensa staff; and</li>
+    <li>An API used by the AxoSync client to authenticate, register a device, and download an encrypted
+        configuration file.</li>
+</ul>
+<p>
+    This service does <strong>not</strong> collect, transmit, or store the raw brain-signal (EEG/BCI) data
+    recorded by your device. That data is captured and processed locally by the AxoSync application on your
+    own device and is outside the scope of this Policy.
+</p>
+<p>
+    There is no billing or subscription functionality associated with this service, and we do not collect
+    payment information.
+</p>
+
+<h2>3. Personal Data We Collect</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Category</th>
+            <th>Examples</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Account data</td>
+            <td>E-mail address, password (stored as an Argon2id hash, never in plain text), account creation
+                date</td>
+        </tr>
+        <tr>
+            <td>Account status data</td>
+            <td>Assigned configuration, active/revoked status, expiry date, entitlement information</td>
+        </tr>
+        <tr>
+            <td>Device data</td>
+            <td>Device identifier / public key, platform (e.g. Windows), registration date, last-seen date</td>
+        </tr>
+        <tr>
+            <td>Authentication data</td>
+            <td>Session and refresh tokens, login timestamps</td>
+        </tr>
+        <tr>
+            <td>Technical and log data</td>
+            <td>IP address, browser/client type, request timestamps, error logs, collected automatically for
+                security and troubleshooting purposes</td>
+        </tr>
+    </tbody>
+</table>
+<p>
+    We do not knowingly collect special categories of personal data (e.g. health, biometric, or genetic data)
+    within this service. As noted above, biometric/neural signal data processed by AxoSync is not transmitted
+    to or stored by this service.
+</p>
+
+<h2>4. How We Use Your Data and Our Legal Basis</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Purpose</th>
+            <th>Legal basis (Art. 6 GDPR)</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Creating and administering your account, authenticating you, and issuing access/refresh
+                tokens</td>
+            <td>Performance of a contract (Art. 6(1)(b))</td>
+        </tr>
+        <tr>
+            <td>Registering your device and delivering the configuration assigned to your account</td>
+            <td>Performance of a contract (Art. 6(1)(b))</td>
+        </tr>
+        <tr>
+            <td>Assigning, updating, or revoking a configuration and monitoring account expiry as part of the
+                research cohort</td>
+            <td>Performance of a contract / legitimate interest in study administration (Art. 6(1)(b), (f))</td>
+        </tr>
+        <tr>
+            <td>Maintaining security, detecting and preventing fraud or unauthorized access, and logging
+                errors</td>
+            <td>Legitimate interest in the security of our systems (Art. 6(1)(f))</td>
+        </tr>
+        <tr>
+            <td>Complying with legal obligations (e.g. responding to lawful requests from authorities)</td>
+            <td>Legal obligation (Art. 6(1)(c))</td>
+        </tr>
+    </tbody>
+</table>
+<p>
+    We do not use your personal data for advertising, profiling, or any automated decision-making that
+    produces legal or similarly significant effects on you. Configuration assignment is performed manually by
+    Intelimensa staff, not by an automated system.
+</p>
+
+<h2>5. Cookies and Similar Technologies</h2>
+<p>
+    The web portal uses only strictly necessary cookies required to keep you signed in and to protect the
+    session (e.g. an authentication/session cookie). We do not use analytics, advertising, or third-party
+    tracking cookies. Because these cookies are essential to the service, they do not require separate consent
+    under applicable e-privacy rules, but you can block or delete cookies through your browser settings; doing
+    so may prevent you from staying signed in.
+</p>
+
+<h2>6. Data Retention</h2>
+<p>
+    We retain account, device, and entitlement data for as long as your account remains active and for the
+    duration of the research study you are participating in. When your account expires or is revoked, and no
+    longer needed for the purposes described above, we delete or anonymize your personal data within a
+    reasonable period, unless we are required to retain it for longer to comply with a legal obligation, to
+    resolve disputes, or to enforce our agreements. Technical logs are retained for a limited period
+    (typically no longer than 12 months) for security and troubleshooting purposes.
+</p>
+
+<h2>7. Sharing Your Data</h2>
+<p>
+    We do not sell your personal data. We may share personal data with:
+</p>
+<ul>
+    <li><strong>Hosting and infrastructure providers</strong> who process data on our behalf under a data
+        processing agreement, solely to operate this service;</li>
+    <li><strong>Authorized Intelimensa staff</strong> involved in operating the research cohort and assigning
+        configurations, on a need-to-know basis; and</li>
+    <li><strong>Public authorities</strong>, where required by law or to protect our legal rights.</li>
+</ul>
+<p>
+    We do not share your data with third parties for their own marketing purposes.
+</p>
+
+<h2>8. International Data Transfers</h2>
+<p>
+    We aim to host and process personal data within the European Economic Area (EEA). If any processing
+    involves a transfer of personal data outside the EEA, we will ensure an appropriate safeguard is in place,
+    such as an adequacy decision by the European Commission or Standard Contractual Clauses, before the
+    transfer takes place.
+</p>
+
+<h2>9. Data Security</h2>
+<p>
+    We apply technical and organizational measures appropriate to the risk, including:
+</p>
+<ul>
+    <li>Passwords stored as salted Argon2id hashes, never in plain text;</li>
+    <li>Configuration files protected using envelope encryption (AES-GCM with a per-configuration content
+        encryption key), so raw key material is not transmitted or stored in the clear;</li>
+    <li>All communication with the web portal and API is encrypted in transit using TLS;</li>
+    <li>Locally cached configuration data on your device is protected using your operating system's secure
+        storage (e.g. Windows DPAPI); and</li>
+    <li>Access to account and configuration data is restricted to authorized staff.</li>
+</ul>
+<p>
+    No method of transmission or storage is completely secure. While we work to protect your personal data,
+    we cannot guarantee its absolute security.
+</p>
+
+<h2>10. Your Rights</h2>
+<p>Under the GDPR, you have the right to:</p>
+<ul>
+    <li><strong>Access</strong> the personal data we hold about you;</li>
+    <li><strong>Rectify</strong> inaccurate or incomplete data;</li>
+    <li><strong>Erase</strong> your data ("right to be forgotten"), subject to legal retention requirements;</li>
+    <li><strong>Restrict</strong> or object to certain processing;</li>
+    <li><strong>Data portability</strong>, i.e. to receive your data in a structured, commonly used,
+        machine-readable format;</li>
+    <li><strong>Withdraw consent</strong> at any time, where processing is based on consent, without affecting
+        the lawfulness of processing before withdrawal; and</li>
+    <li><strong>Lodge a complaint</strong> with a supervisory authority.</li>
+</ul>
+<p>
+    To exercise any of these rights, contact us at [Contact E-mail Address]. We will respond within one month,
+    as required by the GDPR.
+</p>
+<p>
+    You also have the right to lodge a complaint with the Romanian National Supervisory Authority for
+    Personal Data Processing (Autoritatea Naţională de Supraveghere a Prelucrării Datelor cu Caracter
+    Personal, "ANSPDCP"):
+</p>
+<address>
+    B-dul G-ral. Gheorghe Magheru 28-30, Sector 1, 010336 Bucharest, Romania<br />
+    <a href="https://www.dataprotection.ro" target="_blank" rel="noopener">www.dataprotection.ro</a> |
+    anspdcp@dataprotection.ro
+</address>
+
+<h2>11. Children's Privacy</h2>
+<p>
+    This service is intended for adult participants of the research cohort. We do not knowingly collect
+    personal data from individuals under 16 years of age. If you believe a minor has provided us with personal
+    data, please contact us so we can take appropriate action.
+</p>
+
+<h2>12. Changes to This Policy</h2>
+<p>
+    We may update this Privacy Policy from time to time, for example to reflect changes in our practices or
+    for legal, operational, or regulatory reasons. We will update the "Last updated" date above and, where
+    changes are material, provide additional notice (e.g. via e-mail or an in-app notice).
+</p>
+
+<h2>13. Contact Us</h2>
+<p>
+    If you have any questions about this Privacy Policy or how we handle your personal data, please contact us
+    at [Contact E-mail Address].
+</p>

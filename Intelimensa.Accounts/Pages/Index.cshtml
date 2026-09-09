@@ -1,0 +1,47 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Home";
+}
+
+<section class="hero text-center">
+    <h1 class="display-5">Intelimensa Accounts</h1>
+    <p class="lead">
+        Account access and configuration delivery for the MindStone research cohort. Sign in to
+        check your assignment, or create an account if you were given access to a loaned device.
+    </p>
+    <div class="d-flex justify-content-center gap-3 flex-wrap mt-4">
+        <a class="btn btn-ia-primary btn-lg px-4" href="/Account/Login">Sign In</a>
+        <a class="btn btn-ia-outline btn-lg px-4" href="/Account/Register">Create Account</a>
+    </div>
+</section>
+
+<section class="row g-4 py-4">
+    <div class="col-md-4">
+        <div class="feature-card">
+            <h3>Staff-assigned configuration</h3>
+            <p>
+                Your BCI configuration is matched to your specific hardware and calibration by
+                the Intelimensa team &mdash; you don't pick it yourself.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="feature-card">
+            <h3>Encrypted delivery</h3>
+            <p>
+                Configurations are encrypted end-to-end and delivered directly to the AxoSync
+                app on your registered device.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="feature-card">
+            <h3>Time-boxed access</h3>
+            <p>
+                Access is tied to your study period and lapses automatically when it ends &mdash;
+                nothing to remember to revoke by hand.
+            </p>
+        </div>
+    </div>
+</section>
