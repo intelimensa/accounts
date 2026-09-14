@@ -1,0 +1,60 @@
+@page
+@model Intelimensa.Accounts.Pages.Staff.IndexModel
+@using Intelimensa.Accounts.Models
+@{
+    ViewData["Title"] = "Staff: Accounts";
+}
+
+<h1 class="h3 mb-3">Accounts</h1>
+
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+@if (!Model.Accounts.Any())
+{
+    <p class="text-muted">No accounts yet.</p>
+}
+
+<div class="d-flex flex-column gap-2">
+    @foreach (var account in Model.Accounts)
+    {
+        <form method="post" asp-page-handler="Update" class="feature-card d-flex flex-wrap align-items-end gap-3">
+            <input type="hidden" name="accountId" value="@account.AccountId" />
+            <div class="flex-grow-1" style="min-width: 14rem;">
+                <div class="small text-muted mb-1">Email</div>
+                <strong>@account.Email</strong>
+            </div>
+            <div>
+                <label class="form-label small mb-0">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    @foreach (var value in Enum.GetValues<AccountStatus>())
+                    {
+                        <option value="@value" selected="@(value == account.Status)">@value</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label class="form-label small mb-0">Expires</label>
+                <input type="date" name="expiresAtDate" class="form-control form-control-sm"
+                       value="@(account.ExpiresAt?.ToString("yyyy-MM-dd"))" />
+            </div>
+            <div>
+                <label class="form-label small mb-0">Assigned config</label>
+                <select name="assignedConfigId" class="form-select form-select-sm">
+                    <option value="">&mdash; none &mdash;</option>
+                    @foreach (var config in Model.Configs)
+                    {
+                        <option value="@config.Id" selected="@(config.Id == account.AssignedConfigId)">@config.DisplayName</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-ia-primary btn-sm">Save</button>
+            </div>
+        </form>
+    }
+</div>
+
+<p class="mt-3"><a asp-page="/Staff/Configs">Manage configs &rarr;</a></p>

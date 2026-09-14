@@ -1,0 +1,41 @@
+@page
+@model Intelimensa.Accounts.Pages.DownloadModel
+@{
+    ViewData["Title"] = "Download";
+}
+
+<div class="text-center mb-4">
+    <h1 class="display-6">Download AxoSync</h1>
+    <p class="text-muted">
+        Choose your platform below. Download links are placeholders until the first public
+        release ships.
+    </p>
+</div>
+
+<div class="row g-4">
+    @foreach (var platform in Model.Platforms)
+    {
+        <div class="col-md-6 col-lg-3">
+            <div class="feature-card h-100 d-flex flex-column">
+                <h2 class="h5">@platform.Name</h2>
+                <p class="text-muted small mb-3">Latest: v@(platform.Latest.Version) &middot; @platform.Latest.ReleasedOn</p>
+
+                <a class="btn btn-ia-primary mb-3" href="@platform.Latest.Url" title="Placeholder link -- no build artifacts yet">
+                    Download Latest
+                </a>
+
+                <div class="dropdown mt-auto">
+                    <button class="btn btn-ia-outline dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Older versions
+                    </button>
+                    <ul class="dropdown-menu w-100">
+                        @foreach (var version in platform.OlderVersions)
+                        {
+                            <li><a class="dropdown-item" href="@version.Url">v@(version.Version) &mdash; @version.ReleasedOn</a></li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    }
+</div>

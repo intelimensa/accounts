@@ -14,10 +14,12 @@ cohort using loaned MindStone BCI devices — the job of this service is account
 and encrypted configuration delivery, not commerce. Don't add subscription/payment concepts
 unless the project's scope actually changes.
 
-**Status**: data model + EF Core/Identity plumbing exist (SQLite, `ApplicationDbContext`, the four
-entities below, Argon2id password hashing). Razor Pages UI, the JSON API, JWT/refresh auth, and
-config encryption/delivery are still just the plan below, not implemented. Treat sections below as
-the plan to implement except "Data model", which now reflects real code — check the files
+**Status**: data model, EF Core/Identity plumbing, auth, and staff config-assignment are
+implemented — cookie login for the web portal, `POST /api/auth/{login,refresh,logout}` issuing
+JWT + refresh tokens for AxoSync (see "Auth flow" below), and a `/Staff` area for assigning
+configs to accounts (see "Staff area" below). Config encryption/delivery and device registration
+are still just the plan below, not implemented. Treat sections below as the plan to implement
+except "Data model", "Auth flow", and "Staff area", which now reflect real code — check the files
 directly if in doubt.
 
 ## Why this is a separate service (not a WordPress plugin)
@@ -50,7 +52,8 @@ project/one database/one deploy is the right amount of infrastructure.
   Someone on the Intelimensa side assigns the correct config after matching the account to the
   right participant/device/calibration. The portal shows the assignment; it doesn't let the user
   choose one. This matters because configs are calibration/hardware-specific — a wrong
-  self-selected config would silently misconfigure someone's device.
+  self-selected config would silently misconfigure someone's device. Implemented via a `/Staff`
+  area — see "Staff area" below.
 - **Per-account expiry (`ExpiresAt`).** The loaned-device cohort has a study end date; access
   should lapse on its own rather than depending on someone remembering to revoke every
   participant by hand.
@@ -69,11 +72,18 @@ rather than trusting this table to stay in sync:
 | `Devices` | one row per registered client machine — id (guid), account_id, public_key (nullable), platform, registered_at, last_seen_at, revoked |
 | `Configs` | key (unique, matches AxoSync's config stems e.g. `ms2`/`ms5`/`biosemi`), display_name, current_version. No blob/CEK storage yet — that's a config-delivery-phase decision, not a data-model one. |
 
+A fifth table, `RefreshTokens` (user_id, token_hash — SHA-256 of the raw token, never the raw value
+itself, created_at, expires_at, revoked_at, replaced_by_token_id for rotation chains), backs the
+JWT refresh flow below. Not yet tied to a `Device` row — that binding is future work once device
+registration exists.
+
 Password hashing is `Intelimensa.Accounts/Security/Argon2idPasswordHasher.cs`, an
 `IPasswordHasher<ApplicationUser>` registered in `Program.cs` in place of Identity's default
 PBKDF2 hasher (cost parameters and the self-describing hash-string format are documented in that
-file's header comment). Identity is wired via `AddIdentityCore` (not `AddIdentity`) — no cookie
-auth middleware yet, since there's no login UI to use it.
+file's header comment). Identity is wired via `AddIdentityCore` (not `AddIdentity`) plus
+`.AddSignInManager()`. Password policy favors length over composition rules (`RequiredLength =
+12`, no digit/upper/symbol requirement) per current NIST 800-63B guidance, since Argon2id already
+defends against offline cracking.
 
 ## Config delivery model (planned)
 
@@ -115,11 +125,69 @@ pipeline (e.g. via a memory dump on their own machine). No key-delivery or at-re
 that — it's a runtime-hardening / anti-tamper / watermarking problem, tracked separately, not
 something this service's API design can fix.
 
-## Auth flow (planned)
+## Auth flow
 
-`POST /api/auth/login` (email + password) → short-lived JWT access token + a longer-lived
-refresh token. The refresh token is what the desktop client persists (DPAPI-wrapped locally) —
-its presence/validity is the mechanism behind the offline grace period described above.
+Implemented — `Intelimensa.Accounts/Api/Auth/AuthEndpoints.cs` (`MapAuthEndpoints`) and
+`Intelimensa.Accounts/Security/TokenService.cs`. Both the web portal (cookie auth) and the JSON
+API (JWT) go through the same `UserManager`/`SignInManager<ApplicationUser>` password-verification
+path, per the "one app, two faces, sharing the same ... business logic" architecture above.
+
+- `POST /api/auth/login` (email + password) → short-lived JWT access token (15 min default,
+  `Jwt:AccessTokenLifetimeMinutes`) + a longer-lived opaque refresh token (30 days default,
+  `Jwt:RefreshTokenLifetimeDays`). Gated on `Account.Status == Active` and not expired — a
+  revoked/expired account can't obtain a session at all, not just config access.
+- `POST /api/auth/refresh` — rotates the refresh token (issues a replacement, revokes the one
+  presented) and returns a fresh access token. A reused/revoked/expired refresh token is rejected.
+- `POST /api/auth/logout` — revokes a refresh token.
+- The refresh token is what the desktop client persists (DPAPI-wrapped locally per the config
+  delivery model above) — its presence/validity is the mechanism behind the offline grace period.
+
+**JWT signing key**: read from configuration (`Jwt:SigningKey`, base64), never committed. In
+Development it comes from .NET User Secrets — one-time setup after cloning:
+
+```bash
+cd Intelimensa.Accounts
+dotnet user-secrets set "Jwt:SigningKey" "<base64 value, e.g. from: openssl rand -base64 64>"
+```
+
+The app throws a clear startup error if `Jwt:SigningKey` is missing rather than falling back to a
+default. `Jwt:Issuer`/`Jwt:Audience`/the two lifetime settings are non-secret and live in
+`appsettings.json`.
+
+Web portal pages live under `Pages/Account/` (`Login`, `Register`, `Logout`, `Status` — the "your
+assigned configuration" status page from the architecture section above). The whole `/Account`
+folder requires auth except `Login`/`Register` (`AuthorizeFolder`/`AllowAnonymousToPage` in
+`Program.cs`). Note the `Models.Account` / `Pages.Account.*` namespace collision this creates —
+code under `Pages/Account/` that needs the `Account` entity type imports it via
+`using AccountEntity = Intelimensa.Accounts.Models.Account;` (a bare `Account` reference inside
+the `Intelimensa.Accounts.Pages.Account` namespace resolves to the enclosing namespace itself,
+not the model class — `CS0118`).
+
+## Staff area
+
+Implemented — `Pages/Staff/Index.cshtml` (assign a config / set status / set expiry per account,
+one combined form per row) and `Pages/Staff/Configs.cshtml` (create/list `Config` rows). Gated by
+a `"Staff"` ASP.NET Core Identity role and a matching `"Staff"` authorization policy
+(`RequireRole("Staff")`), applied to the whole folder via
+`options.Conventions.AuthorizeFolder("/Staff", "Staff")` in `Program.cs`. The `Staff` role itself
+is seeded idempotently on every startup (`RoleManager.RoleExistsAsync`/`CreateAsync` right after
+`builder.Build()`) so it always exists, even against a fresh DB.
+
+**There is no UI to grant the `Staff` role** — with zero staff users there's nothing to gate a
+"manage staff" page behind yet, so promotion is a manual one-time SQL step per person:
+
+```sql
+INSERT INTO AspNetUserRoles (UserId, RoleId)
+SELECT u.Id, r.Id FROM AspNetUsers u, AspNetRoles r
+WHERE u.Email = 'someone@example.com' AND r.Name = 'Staff';
+```
+
+**Role claims are baked into the auth cookie at sign-in** (standard ASP.NET Core Identity
+behavior) — a user promoted to `Staff` while already logged in won't see the effect until they log
+out and back in. This tripped up manual testing once; don't mistake it for the grant not working.
+
+`Pages/Staff/` sits in namespace `Intelimensa.Accounts.Pages.Staff` — no model type is named
+`Staff`, so unlike `Pages/Account/` this doesn't hit the `CS0118` collision described above.
 
 ## Build Commands
 
