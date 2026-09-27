@@ -62,6 +62,31 @@ body {
   color: var(--ia-accent) !important;
 }
 
+.brand-logo {
+  height: 28px;
+  width: auto;
+  display: block;
+}
+
+.brand-logo-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .brand-logo-light {
+    display: none;
+  }
+
+  .brand-logo-dark {
+    display: block;
+  }
+}
+
+.brand-suffix {
+  font-weight: 600;
+  color: var(--ia-heading);
+}
+
 .site-footer {
   background-color: var(--ia-card-bg);
   border-top: 1px solid var(--ia-border);
