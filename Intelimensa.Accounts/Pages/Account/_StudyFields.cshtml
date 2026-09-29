@@ -1,0 +1,33 @@
+@model Intelimensa.Accounts.Pages.Account.StudyModel
+@using Intelimensa.Accounts.Models
+
+<div class="mb-3">
+    <label asp-for="Input.DateOfBirth" class="form-label"></label>
+    <input asp-for="Input.DateOfBirth" class="form-control" />
+    <span asp-validation-for="Input.DateOfBirth" class="text-danger"></span>
+</div>
+<div class="mb-3">
+    <label asp-for="Input.Gender" class="form-label"></label>
+    <select asp-for="Input.Gender" class="form-select" asp-items="Html.GetEnumSelectList<Gender>()"></select>
+    <span asp-validation-for="Input.Gender" class="text-danger"></span>
+</div>
+<div class="mb-3">
+    <label asp-for="Input.GenderOtherDescription" class="form-label"></label>
+    <input asp-for="Input.GenderOtherDescription" class="form-control" />
+    <span asp-validation-for="Input.GenderOtherDescription" class="text-danger"></span>
+</div>
+<div class="mb-3">
+    <label asp-for="Input.Region" class="form-label"></label>
+    <input asp-for="Input.Region" class="form-control" />
+    <span asp-validation-for="Input.Region" class="text-danger"></span>
+</div>
+<div class="mb-3">
+    <label asp-for="Input.Disability" class="form-label"></label>
+    <select asp-for="Input.Disability" class="form-select" asp-items="Html.GetEnumSelectList<DisabilityCategory>()"></select>
+    <span asp-validation-for="Input.Disability" class="text-danger"></span>
+</div>
+<div class="mb-3">
+    <label asp-for="Input.DisabilityOtherDescription" class="form-label"></label>
+    <input asp-for="Input.DisabilityOtherDescription" class="form-control" />
+    <span asp-validation-for="Input.DisabilityOtherDescription" class="text-danger"></span>
+</div>

@@ -41,14 +41,8 @@
                        value="@(account.ExpiresAt?.ToString("yyyy-MM-dd"))" />
             </div>
             <div>
-                <label class="form-label small mb-0">Assigned config</label>
-                <select name="assignedConfigId" class="form-select form-select-sm">
-                    <option value="">&mdash; none &mdash;</option>
-                    @foreach (var config in Model.Configs)
-                    {
-                        <option value="@config.Id" selected="@(config.Id == account.AssignedConfigId)">@config.DisplayName</option>
-                    }
-                </select>
+                <div class="small text-muted mb-1">Registered devices</div>
+                <strong>@account.RegisteredDeviceCount</strong>
             </div>
             <div>
                 <button type="submit" class="btn btn-ia-primary btn-sm">Save</button>
@@ -57,4 +51,8 @@
     }
 </div>
 
-<p class="mt-3"><a asp-page="/Staff/Configs">Manage configs &rarr;</a></p>
+<p class="mt-3">
+    <a asp-page="/Staff/Configs">Manage configs &rarr;</a> &middot;
+    <a asp-page="/Staff/Devices">Manage devices &rarr;</a> &middot;
+    <a asp-page="/Staff/DeviceAssignments">Assign configs to devices &rarr;</a>
+</p>

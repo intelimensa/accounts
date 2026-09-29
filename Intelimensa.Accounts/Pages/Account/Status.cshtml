@@ -20,8 +20,46 @@
                     @(Model.Account?.ExpiresAt is { } expiresAt ? expiresAt.ToString("yyyy-MM-dd") : "No expiry set")
                 </dd>
 
-                <dt class="col-sm-4">Assigned configuration</dt>
-                <dd class="col-sm-8 mb-0">@(Model.AssignedConfigName ?? "Not yet assigned")</dd>
+                <dt class="col-sm-4">Registered devices</dt>
+                <dd class="col-sm-8">
+                    @if (!Model.Devices.Any())
+                    {
+                        <span class="text-muted">None yet.</span>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0">
+                            @foreach (var device in Model.Devices)
+                            {
+                                <li>
+                                    <strong>@device.SerialNumber</strong> (@device.DeviceType) &mdash;
+                                    @(device.AssignedConfigName ?? "config not yet assigned")
+                                    @if (device.UnassignedAt is not null)
+                                    {
+                                        <span class="text-danger">(access revoked)</span>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                </dd>
+
+                <dt class="col-sm-4">Research study</dt>
+                <dd class="col-sm-8 mb-0">
+                    @if (Model.StudyParticipation is null)
+                    {
+                        <span>Not participating.</span>
+                    }
+                    else if (Model.StudyParticipation.WithdrawnAt is not null)
+                    {
+                        <span>Withdrawn.</span>
+                    }
+                    else
+                    {
+                        <span>Participating since @Model.StudyParticipation.ConsentGivenAt.ToString("yyyy-MM-dd").</span>
+                    }
+                    <a asp-page="/Account/Study">Manage &rarr;</a>
+                </dd>
             </dl>
         </div>
     </div>

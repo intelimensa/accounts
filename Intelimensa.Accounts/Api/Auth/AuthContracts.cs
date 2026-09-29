@@ -8,4 +8,5 @@ public record TokenResponse(
     string AccessToken,
     DateTimeOffset AccessTokenExpiresAt,
     string RefreshToken,
-    DateTimeOffset RefreshTokenExpiresAt);
+    DateTimeOffset RefreshTokenExpiresAt,
+    bool IsStudyParticipant);

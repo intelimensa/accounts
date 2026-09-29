@@ -1,0 +1,61 @@
+@page
+@model Intelimensa.Accounts.Pages.Staff.DeviceAssignmentsModel
+@{
+    ViewData["Title"] = "Staff: Device Assignments";
+}
+
+<h1 class="h3 mb-3">Device Assignments</h1>
+<p class="text-muted">One row per account+device registration. Assign the config for that specific pairing.</p>
+
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+@if (!Model.Pairings.Any())
+{
+    <p class="text-muted">No devices have been registered yet.</p>
+}
+
+<div class="d-flex flex-column gap-2">
+    @foreach (var pairing in Model.Pairings)
+    {
+        <div class="feature-card d-flex flex-wrap align-items-end gap-3">
+            <div class="flex-grow-1" style="min-width: 14rem;">
+                <div class="small text-muted mb-1">Account &middot; Device</div>
+                <strong>@pairing.Email</strong>
+                <div class="text-muted small">
+                    @pairing.SerialNumber (@pairing.DeviceType) &middot; registered @pairing.RegisteredAt.ToString("yyyy-MM-dd")
+                    @if (pairing.UnassignedAt is { } unassignedAt)
+                    {
+                        <span class="text-danger"> &middot; revoked @unassignedAt.ToString("yyyy-MM-dd")</span>
+                    }
+                </div>
+            </div>
+            <form method="post" asp-page-handler="Update" class="d-flex align-items-end gap-2">
+                <input type="hidden" name="accountDeviceId" value="@pairing.AccountDeviceId" />
+                <div>
+                    <label class="form-label small mb-0">Assigned config</label>
+                    <select name="assignedConfigId" class="form-select form-select-sm">
+                        <option value="">&mdash; none &mdash;</option>
+                        @foreach (var config in Model.Configs)
+                        {
+                            <option value="@config.Id" selected="@(config.Id == pairing.AssignedConfigId)">@config.DisplayName</option>
+                        }
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-ia-primary btn-sm">Save</button>
+            </form>
+            @if (pairing.UnassignedAt is null)
+            {
+                <form method="post" asp-page-handler="Revoke"
+                      onsubmit="return confirm('Revoke this account\'s access to this device?');">
+                    <input type="hidden" name="accountDeviceId" value="@pairing.AccountDeviceId" />
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Revoke</button>
+                </form>
+            }
+        </div>
+    }
+</div>
+
+<p class="mt-3"><a asp-page="/Staff/Index">&larr; Back to accounts</a></p>

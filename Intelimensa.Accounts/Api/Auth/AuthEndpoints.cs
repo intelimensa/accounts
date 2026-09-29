@@ -39,14 +39,18 @@ public static class AuthEndpoints
         if (!passwordCheck.Succeeded)
             return Results.Unauthorized();
 
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.UserId == user.Id);
-        if (!IsAccountUsable(account))
+        var account = await db.Accounts
+            .Include(a => a.StudyParticipation)
+            .FirstOrDefaultAsync(a => a.UserId == user.Id);
+        if (!AccountPolicy.IsUsable(account))
             return Results.Unauthorized();
 
         var (accessToken, accessExpiresAt) = tokens.CreateAccessToken(user);
         var (refreshToken, refreshExpiresAt) = await tokens.CreateRefreshTokenAsync(user.Id);
 
-        return Results.Ok(new TokenResponse(accessToken, accessExpiresAt, refreshToken, refreshExpiresAt));
+        return Results.Ok(new TokenResponse(
+            accessToken, accessExpiresAt, refreshToken, refreshExpiresAt,
+            account!.StudyParticipation is { IsActive: true }));
     }
 
     private static async Task<IResult> RefreshAsync(
@@ -62,13 +66,17 @@ public static class AuthEndpoints
         var (userId, refreshToken, refreshExpiresAt) = rotated.Value;
 
         var user = await userManager.FindByIdAsync(userId);
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.UserId == userId);
-        if (user is null || !IsAccountUsable(account))
+        var account = await db.Accounts
+            .Include(a => a.StudyParticipation)
+            .FirstOrDefaultAsync(a => a.UserId == userId);
+        if (user is null || !AccountPolicy.IsUsable(account))
             return Results.Unauthorized();
 
         var (accessToken, accessExpiresAt) = tokens.CreateAccessToken(user);
 
-        return Results.Ok(new TokenResponse(accessToken, accessExpiresAt, refreshToken, refreshExpiresAt));
+        return Results.Ok(new TokenResponse(
+            accessToken, accessExpiresAt, refreshToken, refreshExpiresAt,
+            account!.StudyParticipation is { IsActive: true }));
     }
 
     private static async Task<IResult> LogoutAsync(RefreshRequest request, TokenService tokens)
@@ -77,8 +85,4 @@ public static class AuthEndpoints
         return Results.NoContent();
     }
 
-    private static bool IsAccountUsable(Account? account) =>
-        account is not null &&
-        account.Status == AccountStatus.Active &&
-        (account.ExpiresAt is null || account.ExpiresAt > DateTimeOffset.UtcNow);
 }

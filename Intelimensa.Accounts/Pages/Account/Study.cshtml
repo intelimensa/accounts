@@ -1,0 +1,75 @@
+@page
+@model Intelimensa.Accounts.Pages.Account.StudyModel
+@{
+    ViewData["Title"] = "Research Study";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-7">
+        <div class="feature-card mt-4">
+            <h1 class="h3 mb-3">Research Study</h1>
+
+            @if (Model.StatusMessage is not null)
+            {
+                <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+            }
+
+            @if (Model.Participation is null)
+            {
+                <p>
+                    We're studying how people learn to use the MindStone BCI device, and would like your
+                    help. Participation is optional and separate from using AxoSync itself. Joining lets
+                    us collect a short demographic profile plus session-end performance summaries
+                    (accuracy, difficulty level, time played) from the app while you use it.
+                </p>
+                <form method="post" asp-page-handler="Join">
+                    <partial name="_StudyFields" />
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" asp-for="Input.ConsentAcknowledged" />
+                        <label class="form-check-label" asp-for="Input.ConsentAcknowledged">
+                            I consent to participate in this research study and to the collection described above.
+                        </label>
+                        <span asp-validation-for="Input.ConsentAcknowledged" class="text-danger d-block"></span>
+                    </div>
+                    <button type="submit" class="btn btn-ia-primary">Join the study</button>
+                </form>
+            }
+            else if (Model.Participation.WithdrawnAt is { } withdrawnAt)
+            {
+                <p>
+                    You withdrew from the study on @withdrawnAt.ToString("yyyy-MM-dd"). Data collected
+                    before that date is retained; nothing new has been collected since.
+                </p>
+                <form method="post" asp-page-handler="Join">
+                    <partial name="_StudyFields" />
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" asp-for="Input.ConsentAcknowledged" />
+                        <label class="form-check-label" asp-for="Input.ConsentAcknowledged">
+                            I consent to rejoin this research study.
+                        </label>
+                        <span asp-validation-for="Input.ConsentAcknowledged" class="text-danger d-block"></span>
+                    </div>
+                    <button type="submit" class="btn btn-ia-primary">Rejoin the study</button>
+                </form>
+            }
+            else
+            {
+                <p class="text-muted">
+                    You joined the study on @Model.Participation.ConsentGivenAt.ToString("yyyy-MM-dd").
+                </p>
+                <form method="post" asp-page-handler="Update">
+                    <partial name="_StudyFields" />
+                    <button type="submit" class="btn btn-ia-primary">Save changes</button>
+                </form>
+                <form method="post" asp-page-handler="Withdraw" class="mt-3"
+                      onsubmit="return confirm('Withdraw from the study? Data already collected will be kept, but no new data will be collected.');">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Withdraw from study</button>
+                </form>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

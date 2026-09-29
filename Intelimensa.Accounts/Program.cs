@@ -1,4 +1,6 @@
 using Intelimensa.Accounts.Api.Auth;
+using Intelimensa.Accounts.Api.Devices;
+using Intelimensa.Accounts.Api.Telemetry;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Security;
@@ -114,5 +116,7 @@ app.MapStaticAssets();
 app.MapRazorPages()
    .WithStaticAssets();
 app.MapAuthEndpoints();
+app.MapDeviceEndpoints();
+app.MapTelemetryEndpoints();
 
 app.Run();

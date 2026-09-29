@@ -3,6 +3,7 @@ using System;
 using Intelimensa.Accounts.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Intelimensa.Accounts.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260929224029_AddStudyParticipationAndTelemetry")]
+    partial class AddStudyParticipationAndTelemetry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -21,6 +24,9 @@ namespace Intelimensa.Accounts.Migrations
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AssignedConfigId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -38,43 +44,12 @@ namespace Intelimensa.Accounts.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AssignedConfigId");
+
                     b.HasIndex("UserId")
                         .IsUnique();
 
                     b.ToTable("Accounts");
-                });
-
-            modelBuilder.Entity("Intelimensa.Accounts.Models.AccountDevice", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("AccountId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int?>("AssignedConfigId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("BciDeviceId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("RegisteredAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("UnassignedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AssignedConfigId");
-
-                    b.HasIndex("BciDeviceId");
-
-                    b.HasIndex("AccountId", "BciDeviceId")
-                        .IsUnique();
-
-                    b.ToTable("AccountDevices");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.ApplicationUser", b =>
@@ -142,41 +117,6 @@ namespace Intelimensa.Accounts.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
-                });
-
-            modelBuilder.Entity("Intelimensa.Accounts.Models.BciDevice", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CurrentFirmwareVersion")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DeviceType")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("LastFirmwareUpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateOnly>("ProducedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("SerialNumber")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SerialNumber")
-                        .IsUnique();
-
-                    b.ToTable("BciDevices");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.Config", b =>
@@ -322,14 +262,14 @@ namespace Intelimensa.Accounts.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid>("AccountDeviceId")
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("AccountId")
                         .HasColumnType("INTEGER");
 
                     b.Property<double>("Accuracy")
                         .HasColumnType("REAL");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("DifficultyLevel")
                         .HasColumnType("INTEGER");
@@ -348,9 +288,9 @@ namespace Intelimensa.Accounts.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AccountDeviceId");
-
                     b.HasIndex("AccountId");
+
+                    b.HasIndex("DeviceId");
 
                     b.ToTable("TelemetryEvents");
                 });
@@ -485,39 +425,20 @@ namespace Intelimensa.Accounts.Migrations
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.Account", b =>
                 {
+                    b.HasOne("Intelimensa.Accounts.Models.Config", "AssignedConfig")
+                        .WithMany()
+                        .HasForeignKey("AssignedConfigId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Intelimensa.Accounts.Models.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Intelimensa.Accounts.Models.AccountDevice", b =>
-                {
-                    b.HasOne("Intelimensa.Accounts.Models.Account", "Account")
-                        .WithMany("AccountDevices")
-                        .HasForeignKey("AccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Intelimensa.Accounts.Models.Config", "AssignedConfig")
-                        .WithMany()
-                        .HasForeignKey("AssignedConfigId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Intelimensa.Accounts.Models.BciDevice", "BciDevice")
-                        .WithMany("AccountDevices")
-                        .HasForeignKey("BciDeviceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Account");
-
                     b.Navigation("AssignedConfig");
 
-                    b.Navigation("BciDevice");
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.Device", b =>
@@ -555,21 +476,21 @@ namespace Intelimensa.Accounts.Migrations
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.TelemetryEvent", b =>
                 {
-                    b.HasOne("Intelimensa.Accounts.Models.AccountDevice", "AccountDevice")
-                        .WithMany()
-                        .HasForeignKey("AccountDeviceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Intelimensa.Accounts.Models.Account", "Account")
                         .WithMany()
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Intelimensa.Accounts.Models.Device", "Device")
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Account");
 
-                    b.Navigation("AccountDevice");
+                    b.Navigation("Device");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -625,16 +546,9 @@ namespace Intelimensa.Accounts.Migrations
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.Account", b =>
                 {
-                    b.Navigation("AccountDevices");
-
                     b.Navigation("Devices");
 
                     b.Navigation("StudyParticipation");
-                });
-
-            modelBuilder.Entity("Intelimensa.Accounts.Models.BciDevice", b =>
-                {
-                    b.Navigation("AccountDevices");
                 });
 #pragma warning restore 612, 618
         }

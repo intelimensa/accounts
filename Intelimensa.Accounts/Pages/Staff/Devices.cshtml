@@ -1,0 +1,73 @@
+@page
+@model Intelimensa.Accounts.Pages.Staff.DevicesModel
+@{
+    ViewData["Title"] = "Staff: Devices";
+}
+
+<h1 class="h3 mb-3">Devices</h1>
+<p class="text-muted">The production/inventory list of physical BCI units, entered as they're manufactured.</p>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+<div class="feature-card mb-4">
+    <h2 class="h5 mb-3">Add a device</h2>
+    <form method="post" asp-page-handler="Create" class="row g-2 align-items-end">
+        <div class="col-sm-3">
+            <label asp-for="Input.SerialNumber" class="form-label"></label>
+            <input asp-for="Input.SerialNumber" class="form-control" />
+            <span asp-validation-for="Input.SerialNumber" class="text-danger"></span>
+        </div>
+        <div class="col-sm-2">
+            <label asp-for="Input.DeviceType" class="form-label"></label>
+            <input asp-for="Input.DeviceType" class="form-control" placeholder="e.g. ms2" />
+            <span asp-validation-for="Input.DeviceType" class="text-danger"></span>
+        </div>
+        <div class="col-sm-2">
+            <label asp-for="Input.ProducedAt" class="form-label"></label>
+            <input asp-for="Input.ProducedAt" class="form-control" />
+            <span asp-validation-for="Input.ProducedAt" class="text-danger"></span>
+        </div>
+        <div class="col-sm-3">
+            <label asp-for="Input.CurrentFirmwareVersion" class="form-label"></label>
+            <input asp-for="Input.CurrentFirmwareVersion" class="form-control" />
+            <span asp-validation-for="Input.CurrentFirmwareVersion" class="text-danger"></span>
+        </div>
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-ia-primary w-100">Add Device</button>
+        </div>
+    </form>
+</div>
+
+@if (!Model.Devices.Any())
+{
+    <p class="text-muted">No devices yet.</p>
+}
+
+<div class="d-flex flex-column gap-2">
+    @foreach (var device in Model.Devices)
+    {
+        <div class="feature-card d-flex justify-content-between align-items-center">
+            <div>
+                <strong>@device.SerialNumber</strong>
+                <div class="text-muted small">
+                    Type: @device.DeviceType &middot; Produced @device.ProducedAt.ToString("yyyy-MM-dd")
+                    &middot; Firmware @device.CurrentFirmwareVersion
+                    @if (device.LastFirmwareUpdatedAt is { } updatedAt)
+                    {
+                        <text> (updated @updatedAt.ToString("yyyy-MM-dd"))</text>
+                    }
+                </div>
+            </div>
+            <div class="text-muted small">@device.RegistrationCount registered</div>
+        </div>
+    }
+</div>
+
+<p class="mt-3"><a asp-page="/Staff/Index">&larr; Back to accounts</a></p>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

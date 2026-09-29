@@ -15,6 +15,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    public DbSet<StudyParticipation> StudyParticipations => Set<StudyParticipation>();
+
+    public DbSet<TelemetryEvent> TelemetryEvents => Set<TelemetryEvent>();
+
+    public DbSet<BciDevice> BciDevices => Set<BciDevice>();
+
+    public DbSet<AccountDevice> AccountDevices => Set<AccountDevice>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -27,11 +35,6 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(a => a.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasOne(a => a.AssignedConfig)
-                .WithMany()
-                .HasForeignKey(a => a.AssignedConfigId)
-                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Device>(entity =>
@@ -56,6 +59,57 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(r => r.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<StudyParticipation>(entity =>
+        {
+            entity.HasKey(sp => sp.AccountId);
+
+            entity.HasOne(sp => sp.Account)
+                .WithOne(a => a.StudyParticipation)
+                .HasForeignKey<StudyParticipation>(sp => sp.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TelemetryEvent>(entity =>
+        {
+            entity.HasIndex(t => t.AccountId);
+            entity.HasIndex(t => t.AccountDeviceId);
+
+            entity.HasOne(t => t.Account)
+                .WithMany()
+                .HasForeignKey(t => t.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(t => t.AccountDevice)
+                .WithMany()
+                .HasForeignKey(t => t.AccountDeviceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<BciDevice>(entity =>
+        {
+            entity.HasIndex(d => d.SerialNumber).IsUnique();
+        });
+
+        builder.Entity<AccountDevice>(entity =>
+        {
+            entity.HasIndex(ad => new { ad.AccountId, ad.BciDeviceId }).IsUnique();
+
+            entity.HasOne(ad => ad.Account)
+                .WithMany(a => a.AccountDevices)
+                .HasForeignKey(ad => ad.AccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ad => ad.BciDevice)
+                .WithMany(d => d.AccountDevices)
+                .HasForeignKey(ad => ad.BciDeviceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(ad => ad.AssignedConfig)
+                .WithMany()
+                .HasForeignKey(ad => ad.AssignedConfigId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
