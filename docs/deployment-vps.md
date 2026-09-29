@@ -82,6 +82,10 @@ server {
     listen 80;
     server_name accounts.intelimensa.com;
 
+    # Release installers are uploaded through the Staff > Releases page; Nginx's 1 MB default
+    # body limit would reject them. Keep this >= the app's own 1 GiB cap.
+    client_max_body_size 1g;
+
     location / {
         proxy_pass         http://127.0.0.1:5000;
         proxy_http_version 1.1;
@@ -191,6 +195,8 @@ Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
 Environment=Jwt__SigningKey=REPLACE_WITH_GENERATED_BASE64_KEY
 Environment=ConnectionStrings__DefaultConnection=Data Source=/var/www/accounts/data/accounts.db
+# Uploaded release binaries. Must be outside /var/www/accounts/app (rsync --delete would wipe it).
+Environment=Releases__StoragePath=/var/www/accounts/data/releases
 
 SyslogIdentifier=intelimensa-accounts
 

@@ -189,6 +189,27 @@ out and back in. This tripped up manual testing once; don't mistake it for the g
 `Pages/Staff/` sits in namespace `Intelimensa.Accounts.Pages.Staff` — no model type is named
 `Staff`, so unlike `Pages/Account/` this doesn't hit the `CS0118` collision described above.
 
+## Releases & downloads
+
+Implemented — AxoSync installers are published by hand and downloaded by participants, login-gated.
+
+- **Data**: `Releases` (unique `Version`, `Notes`, `Status` Draft/Published/Withdrawn, `PublishedAt`) and
+  `ReleaseArtifacts` (one per release+platform: file name, size, server-computed SHA-256,
+  `StorageKey`). Platforms are `ReleasePlatform` (`WindowsX64`, `MacOSArm64`, `MacOSX64`, `LinuxX64`).
+- **Storage**: `IReleaseStorage` / `LocalReleaseStorage` (`Storage/`) writes to
+  `Releases:StoragePath` (default `releases/` under the content root, gitignored) as
+  `{version}/{platform}/{file}`. It's never served as a static file, and in production it must live
+  outside the rsync-deployed app dir (see `docs/deployment-vps.md`). Object storage later = a new
+  `IReleaseStorage` implementation, nothing else changes.
+- **Publishing (staff, manual)**: `/Staff/Releases` — create a draft, upload an artifact per
+  platform (1 GiB cap; re-uploading replaces), Publish/Withdraw. Can't publish with no artifacts;
+  a published release can be withdrawn but not returned to draft; artifacts are only removable
+  from drafts. CI-driven publishing is deliberately not built yet.
+- **Downloading**: `/Download` requires login *and* `AccountPolicy.IsUsable` (active, not
+  expired). Shows the latest published build per platform (with SHA-256) plus older versions; a
+  platform with no published build is greyed out. Files stream from `?handler=File&version=&platform=`
+  and only for Published releases. The page is no longer linked from the navbar/landing page.
+
 ## Build Commands
 
 The solution file is `.slnx` (the newer XML-based format), not `.sln` — there is no `.sln` file

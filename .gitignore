@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Uploaded release binaries (dev default storage path)
+Intelimensa.Accounts/releases/

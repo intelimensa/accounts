@@ -1,0 +1,112 @@
+@page
+@model Intelimensa.Accounts.Pages.Staff.ReleasesModel
+@using Intelimensa.Accounts.Models
+@{
+    ViewData["Title"] = "Staff: Releases";
+}
+
+<h1 class="h3 mb-3">Releases</h1>
+
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+<div class="feature-card mb-4">
+    <h2 class="h5 mb-3">New draft release</h2>
+    <form method="post" asp-page-handler="Create" class="row g-2 align-items-end">
+        <div class="col-sm-3">
+            <label asp-for="Input.Version" class="form-label"></label>
+            <input asp-for="Input.Version" class="form-control" placeholder="e.g. 1.0.0" />
+            <span asp-validation-for="Input.Version" class="text-danger"></span>
+        </div>
+        <div class="col-sm-6">
+            <label asp-for="Input.Notes" class="form-label"></label>
+            <input asp-for="Input.Notes" class="form-control" />
+            <span asp-validation-for="Input.Notes" class="text-danger"></span>
+        </div>
+        <div class="col-sm-3">
+            <button type="submit" class="btn btn-ia-primary w-100">Create Draft</button>
+        </div>
+    </form>
+</div>
+
+@if (!Model.Releases.Any())
+{
+    <p class="text-muted">No releases yet.</p>
+}
+
+<div class="d-flex flex-column gap-3">
+    @foreach (var release in Model.Releases)
+    {
+        var isDraft = release.Status == ReleaseStatus.Draft;
+        <div class="feature-card">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                    <h2 class="h5 mb-0">v@(release.Version) <span class="badge text-bg-secondary ms-1">@release.Status</span></h2>
+                    @if (release.Notes is not null)
+                    {
+                        <div class="text-muted small">@release.Notes</div>
+                    }
+                </div>
+                <form method="post" asp-page-handler="SetStatus" class="d-flex gap-2">
+                    <input type="hidden" name="releaseId" value="@release.Id" />
+                    @if (release.Status != ReleaseStatus.Published)
+                    {
+                        <button type="submit" name="status" value="@ReleaseStatus.Published" class="btn btn-ia-primary btn-sm">Publish</button>
+                    }
+                    @if (release.Status == ReleaseStatus.Published)
+                    {
+                        <button type="submit" name="status" value="@ReleaseStatus.Withdrawn" class="btn btn-ia-outline btn-sm">Withdraw</button>
+                    }
+                </form>
+            </div>
+
+            @foreach (var platform in Enum.GetValues<ReleasePlatform>())
+            {
+                var artifact = release.Artifacts.FirstOrDefault(a => a.Platform == platform);
+                <div class="border-top py-2 d-flex flex-wrap align-items-center gap-2">
+                    <div style="min-width: 12rem;"><strong>@platform.DisplayName()</strong></div>
+                    @if (artifact is not null)
+                    {
+                        <div class="flex-grow-1 small">
+                            @artifact.FileName &middot; @(artifact.SizeBytes / 1024 / 1024) MB
+                            <div class="text-muted text-break">SHA-256 @artifact.Sha256</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="flex-grow-1 small text-muted">No artifact</div>
+                    }
+
+                    @if (release.Status != ReleaseStatus.Withdrawn)
+                    {
+                        <form method="post" asp-page-handler="Upload" enctype="multipart/form-data" class="d-flex gap-2">
+                            <input type="hidden" name="releaseId" value="@release.Id" />
+                            <input type="hidden" name="platform" value="@platform" />
+                            <input type="file" name="file" class="form-control form-control-sm" required />
+                            <button type="submit" class="btn btn-ia-outline btn-sm">@(artifact is null ? "Upload" : "Replace")</button>
+                        </form>
+                    }
+                    @if (artifact is not null && isDraft)
+                    {
+                        <form method="post" asp-page-handler="RemoveArtifact">
+                            <input type="hidden" name="artifactId" value="@artifact.Id" />
+                            <button type="submit" class="btn btn-link btn-sm text-danger">Remove</button>
+                        </form>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<p class="mt-3"><a asp-page="/Staff/Index">&larr; Back to accounts</a></p>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

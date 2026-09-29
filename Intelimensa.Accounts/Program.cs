@@ -4,6 +4,7 @@ using Intelimensa.Accounts.Api.Telemetry;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Security;
+using Intelimensa.Accounts.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,11 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AuthorizeFolder("/Staff", "Staff");
+    options.Conventions.AuthorizePage("/Download");
 });
+
+builder.Services.Configure<ReleaseStorageOptions>(builder.Configuration.GetSection("Releases"));
+builder.Services.AddSingleton<IReleaseStorage, LocalReleaseStorage>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));

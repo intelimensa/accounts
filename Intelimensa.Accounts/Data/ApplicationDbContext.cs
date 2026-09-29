@@ -23,6 +23,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<AccountDevice> AccountDevices => Set<AccountDevice>();
 
+    public DbSet<Release> Releases => Set<Release>();
+
+    public DbSet<ReleaseArtifact> ReleaseArtifacts => Set<ReleaseArtifact>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -110,6 +114,21 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(ad => ad.AssignedConfigId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Release>(entity =>
+        {
+            entity.HasIndex(r => r.Version).IsUnique();
+        });
+
+        builder.Entity<ReleaseArtifact>(entity =>
+        {
+            entity.HasIndex(a => new { a.ReleaseId, a.Platform }).IsUnique();
+
+            entity.HasOne(a => a.Release)
+                .WithMany(r => r.Artifacts)
+                .HasForeignKey(a => a.ReleaseId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

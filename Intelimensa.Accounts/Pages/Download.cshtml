@@ -1,41 +1,71 @@
 @page
 @model Intelimensa.Accounts.Pages.DownloadModel
+@using Intelimensa.Accounts.Models
 @{
     ViewData["Title"] = "Download";
 }
 
 <div class="text-center mb-4">
     <h1 class="display-6">Download AxoSync</h1>
-    <p class="text-muted">
-        AxoSync is not publicly available yet. Downloads will appear here once the first
-        release ships.
-    </p>
+    <p class="text-muted">Choose your platform below.</p>
 </div>
 
-<div class="row g-4">
-    @foreach (var platform in Model.Platforms)
-    {
-        <div class="col-md-6 col-lg-3">
-            <div class="feature-card h-100 d-flex flex-column @(platform.Enabled ? "" : "opacity-50")">
-                <h2 class="h5">@platform.Name</h2>
-                @if (platform.Note is not null)
-                {
-                    <p class="text-muted small mb-3">@platform.Note</p>
-                }
+@if (!Model.AccountUsable)
+{
+    <div class="alert alert-warning text-center" role="alert">
+        Your account is not active, so downloads aren't available. Contact the Intelimensa team if
+        you think this is a mistake.
+    </div>
+}
+else
+{
+    <div class="row g-4">
+        @foreach (var platform in Model.Platforms)
+        {
+            var latest = platform.Latest;
+            <div class="col-md-6 col-lg-3">
+                <div class="feature-card h-100 d-flex flex-column @(latest is null ? "opacity-50" : "")">
+                    <h2 class="h5">@platform.Platform.DisplayName()</h2>
 
-                @if (platform.Enabled)
-                {
-                    <a class="btn btn-ia-primary mt-auto" href="@platform.Url" title="Placeholder link -- no build artifacts yet">
-                        Download
-                    </a>
-                }
-                else
-                {
-                    <button class="btn btn-ia-primary mt-auto" type="button" disabled aria-disabled="true">
-                        Download
-                    </button>
-                }
+                    @if (latest is null)
+                    {
+                        <p class="text-muted small mb-3">Not available yet</p>
+                        <button class="btn btn-ia-primary mt-auto" type="button" disabled aria-disabled="true">Download</button>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-3">
+                            v@(latest.Version) &middot; @(latest.PublishedAt?.ToString("yyyy-MM-dd")) &middot; @(latest.SizeBytes / 1024 / 1024) MB
+                        </p>
+                        <a class="btn btn-ia-primary mb-2" asp-page-handler="File"
+                           asp-route-version="@latest.Version" asp-route-platform="@platform.Platform">Download</a>
+                        <details class="small text-muted mb-3">
+                            <summary>SHA-256</summary>
+                            <span class="text-break">@latest.Sha256</span>
+                        </details>
+
+                        @if (platform.Older.Count > 0)
+                        {
+                            <div class="dropdown mt-auto">
+                                <button class="btn btn-ia-outline dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Older versions
+                                </button>
+                                <ul class="dropdown-menu w-100">
+                                    @foreach (var older in platform.Older)
+                                    {
+                                        <li>
+                                            <a class="dropdown-item" asp-page-handler="File"
+                                               asp-route-version="@older.Version" asp-route-platform="@platform.Platform">
+                                                v@(older.Version) &mdash; @(older.PublishedAt?.ToString("yyyy-MM-dd"))
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    }
+                </div>
             </div>
-        </div>
-    }
-</div>
+        }
+    </div>
+}
