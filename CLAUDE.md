@@ -200,7 +200,7 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   normalized code (`Security/RegistrationCode.cs`); the plaintext is only ever returned by the
   manufacturing API's `reserve`/`rekey`. Legacy/backfilled units (staff form, CSV) are `Manufactured`
   with a null hash.
-- **Manufacturing API** (`Api/Manufacturing/`, `/api/manufacturing/units/{reserve,confirm,void,rekey}`):
+- **Manufacturing API** (`Api/Manufacturing/`, `/api/manufacturing/units/{reserve,confirm,void,rekey,firmware}` plus `GET /api/manufacturing/options`):
   JWT, gated by the `Manufacturer` role/policy (separate from `Staff`, seeded at startup, granted by
   manual SQL like Staff). Account status is re-checked on every call. Serials are `PPPP-RVAA-AAAC`
   (`Manufacturing/SerialNumber.cs`): 4-char product, region/variant char, format-version char (`0`),
@@ -208,6 +208,13 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   `SequenceStart`, so counts aren't obvious), Luhn mod-36 check character. Product codes come from
   `Manufacturing:ProductCodes` and allowed regions from `Manufacturing:RegionCodes` (both
   placeholders for now; validated at startup).
+- **Unit history and firmware rules**: every manufacturing call appends a `BciDeviceEvent` (never a
+  code). `rekey` needs a `reason` (`RekeyReason`: Relabel/Reflash/Rework, parsed from a string), an
+  optional note and the *intended* `firmwareVersion`; it works on Reserved and Manufactured units and
+  returns the unit to Reserved. Firmware fields are applied at `confirm` (or `/firmware`, for
+  firmware writes that leave the registration code unchanged): `LastFirmwareUpdatedAt` always
+  moves, `CurrentFirmwareVersion` only if it differs. `ManufacturedAt`/`ProducedAt` are set on the first
+  confirm only. `void` is refused if any participant is paired. Region has no server default.
 - **JWTs now carry role claims** (`TokenService.CreateAccessToken(user, roles)`), baked in at
   login/refresh like cookie roles.
 - **Registration** (`POST /api/devices/register`): a *new* pairing needs the unit to be
@@ -215,7 +222,7 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   generated regardless), the correct code. Unknown serial / unit not registerable / missing or wrong
   code all return the same generic 404. Re-registering an existing pairing needs no code. Failures
   are capped at 10/hour per user (`RegistrationFailureLimiter`, in-memory).
-- **Not built**: the station app, AxoSync reading the identity, a firmware-update endpoint, batch
+- **Not built**: the station app, AxoSync reading the identity, a participant/AxoSync-facing firmware-update endpoint (the manufacturing one is built), batch
   reserve for offline factories, any UI to grant `Manufacturer`.
 
 ## Releases & downloads

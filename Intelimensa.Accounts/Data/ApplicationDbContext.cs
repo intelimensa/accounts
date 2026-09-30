@@ -23,6 +23,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<AccountDevice> AccountDevices => Set<AccountDevice>();
 
+    public DbSet<BciDeviceEvent> BciDeviceEvents => Set<BciDeviceEvent>();
+
     public DbSet<Release> Releases => Set<Release>();
 
     public DbSet<ReleaseArtifact> ReleaseArtifacts => Set<ReleaseArtifact>();
@@ -94,6 +96,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         builder.Entity<BciDevice>(entity =>
         {
             entity.HasIndex(d => d.SerialNumber).IsUnique();
+        });
+
+        builder.Entity<BciDeviceEvent>(entity =>
+        {
+            entity.HasIndex(e => e.BciDeviceId);
+
+            entity.HasOne(e => e.BciDevice)
+                .WithMany()
+                .HasForeignKey(e => e.BciDeviceId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<AccountDevice>(entity =>

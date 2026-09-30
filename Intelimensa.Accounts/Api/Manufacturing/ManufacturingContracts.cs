@@ -16,9 +16,28 @@ public record ConfirmUnitRequest(string SerialNumber, string RegistrationCode, s
 
 public record UnitRequest(string SerialNumber);
 
+/// <summary>
+/// <paramref name="Reason"/> is required, a string: "Relabel", "Reflash" or "Rework" (case-insensitive). The
+/// <paramref name="FirmwareVersion"/> is the version the station intends to flash; it's recorded in
+/// the unit's history but only applied to the unit at <c>confirm</c>.
+/// </summary>
+public record RekeyUnitRequest(string SerialNumber, string? Reason, string? Note, string FirmwareVersion);
+
+public record FirmwareWriteRequest(string SerialNumber, string FirmwareVersion, string? Note);
+
 public record UnitResponse(
     string SerialNumber,
     string DeviceType,
     BciDeviceStatus Status,
     string FirmwareVersion,
-    DateTimeOffset? ManufacturedAt);
+    DateTimeOffset? ManufacturedAt,
+    DateTimeOffset? FirmwareUpdatedAt);
+
+public record ProductOption(string DeviceType, string ProductCode);
+
+public record RegionOption(string Code, string Description);
+
+public record ManufacturingOptionsResponse(
+    List<ProductOption> Products,
+    List<RegionOption> Regions,
+    List<string> RekeyReasons);

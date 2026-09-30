@@ -10,14 +10,21 @@ built, the app is not.
 
 1. **Sign in to Quarry** with the station's own account (one per station). **[server built]**
 2. **Pick device type, region and the firmware version** being flashed, and connect the unit.
+   The server has no default region: Quarry may pre-select one but always sends it, and a missing or
+   unknown region is refused. `GET /api/manufacturing/options` lists the accepted product codes,
+   regions and rekey reasons.
 3. **Reserve.** Quarry calls `POST /api/manufacturing/units/reserve`. **[server built]**
    - The server allocates the next serial (`PPPP-RVAA-AAAC`, e.g. `MSV2-G01S-ATCF`) and generates
      a random registration code (e.g. `066N9-6CWEA`).
    - The unit now exists as `Reserved`: it can't be registered by anyone yet.
    - The plaintext code is returned **once**; the server stores only its hash.
-4. **Flash** the application image plus the per-unit identity record (serial and code), with
-   code-protect on. **[app not built]** See the firmware repo's `DEVICE_IDENTITY.md`.
-5. **Read the identity back** from the running unit (`dcGetIdentity`) and compare. **[app not built]**
+4. **Set the USB serial and flash.** **[app not built]** Quarry runs the FTDI tool to set the
+   UART-USB bridge's serial number to the serial, then the MPLAB flash utility to program the
+   application image plus the per-unit identity record (serial and code). The programmer erases all
+   program memory, so the identity is written on every flash. See the firmware repo's
+   `DEVICE_IDENTITY.md`.
+5. **Read the identity back** from the running unit (`dcGetIdentity`) and compare it, and the USB
+   serial, to what was reserved. **[app not built]**
 6. **Confirm.** Quarry calls `POST /api/manufacturing/units/confirm` with the code it read back.
    **[server built]** If it matches the server's hash, the unit becomes `Manufactured` and is
    registerable.
@@ -29,8 +36,18 @@ built, the app is not.
 - **Flash or readback fails:** re-flash and re-verify, or `void` the reservation. Voided serials
   are never reused.
 - **Quarry loses the code after reserving:** `rekey` the serial for a fresh code, or `void` it.
-- **Lost or leaked label on a shipped unit:** `rekey` it. The old code stops working immediately,
-  the unit is re-flashed and confirmed again, and participants already paired to it are unaffected.
+- **Lost or leaked label, corrupted identity page, or hardware rework:** `rekey` it with a required
+  reason (`Relabel`, `Reflash` or `Rework`, plus an optional note) and the firmware version you
+  intend to flash. The old code stops working immediately and the unit goes back to `Reserved`
+  until it's re-flashed and confirmed. Participants already paired to it stay paired, but new
+  participants can't register it while it's `Reserved`, so don't leave a reworked unit
+  unconfirmed. A unit with participants paired can't be voided.
+- **Firmware reflashed but the same identity put back:** a programmer flash erases the identity, so
+  Quarry can read it from the running unit before erasing and write it back afterwards. Then there's
+  no rekey and no new label; just record it with the `firmware` endpoint. If the identity can't be
+  read first (blank, corrupt, older firmware), rekey instead.
+- **History:** every reserve, confirm, void, rekey and firmware write is recorded per unit (who,
+  when, reason, firmware before and after; never the code).
 - **Confirm retried after a network error:** safe, confirm is idempotent.
 
 ## Legacy and manual entry
@@ -66,5 +83,6 @@ firmware upgrade, so manufacturing only supplies the initial version. **[endpoin
 
 The serial alone is guessable and appears in many places (staff pages, the participant's status
 page, paperwork). The registration code exists only on the unit, its label and as a hash on the
-server, so registering proves you read the unit rather than merely knew its serial. It does not
-defend against someone copying a unit's memory; only readback protection does that.
+server, so registering proves you read the unit rather than merely knew its serial. It proves
+access to the unit, not tamper resistance: someone with a programmer and the unit can read its
+memory, including the code.
