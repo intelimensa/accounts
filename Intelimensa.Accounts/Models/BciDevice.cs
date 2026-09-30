@@ -10,6 +10,11 @@ public class BciDevice
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>
+    /// Canonical serial. For serials issued by manufacturing this is the dashless 12-character form
+    /// (see <c>SerialNumber</c>); dashes are added only for display. Legacy/staff-entered serials
+    /// are free-form.
+    /// </summary>
     public required string SerialNumber { get; set; }
 
     /// <summary>Matches <see cref="Config.Key"/> vocabulary, e.g. "ms2", "ms5", "biosemi".</summary>

@@ -25,7 +25,7 @@
                 <div class="small text-muted mb-1">Account &middot; Device</div>
                 <strong>@pairing.Email</strong>
                 <div class="text-muted small">
-                    @pairing.SerialNumber (@pairing.DeviceType) &middot; registered @pairing.RegisteredAt.ToString("yyyy-MM-dd")
+                    @Intelimensa.Accounts.Manufacturing.SerialNumber.ToDisplay(pairing.SerialNumber) (@pairing.DeviceType) &middot; registered @pairing.RegisteredAt.ToString("yyyy-MM-dd")
                     @if (pairing.UnassignedAt is { } unassignedAt)
                     {
                         <span class="text-danger"> &middot; revoked @unassignedAt.ToString("yyyy-MM-dd")</span>

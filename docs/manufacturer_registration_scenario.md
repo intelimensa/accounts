@@ -14,7 +14,8 @@ built, the app is not.
    unknown region is refused. `GET /api/manufacturing/options` lists the accepted product codes,
    regions and rekey reasons.
 3. **Reserve.** Quarry calls `POST /api/manufacturing/units/reserve`. **[server built]**
-   - The server allocates the next serial (`PPPP-RVAA-AAAC`, e.g. `MSV2-G01S-ATCF`) and generates
+   - The server allocates the next serial (canonical form `PPPPRVAAAAAC`, e.g. `MSV2G01SATCF`,
+     shown on the label as `MSV2-G01S-ATCF`; see below) and generates
      a random registration code (e.g. `066N9-6CWEA`).
    - The unit now exists as `Reserved`: it can't be registered by anyone yet.
    - The plaintext code is returned **once**; the server stores only its hash.
@@ -49,6 +50,17 @@ built, the app is not.
 - **History:** every reserve, confirm, void, rekey and firmware write is recorded per unit (who,
   when, reason, firmware before and after; never the code).
 - **Confirm retried after a network error:** safe, confirm is idempotent.
+
+## Serial format: dashless, with a display form
+
+Serials are stored, sent and compared as 12 plain characters (`MSV2G01SATCF`). Dashes
+(`MSV2-G01S-ATCF`) are added only for human-facing text such as labels and staff pages, and the
+API returns both (`serialNumber`, `serialNumberLabel`). They're kept out of the stored form because
+some operating systems rewrite punctuation in a USB serial string (macOS turns each non-alphanumeric
+character into an underscore), which breaks matching a port to its serial. The server accepts a
+serial in label form, with underscores or in lowercase and resolves it to the stored one; staff
+entries and CSV rows in the current format are stored dashless too. Legacy free-form serials are
+left as they are.
 
 ## Legacy and manual entry
 

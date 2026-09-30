@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Importing;
+using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -45,6 +46,8 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
         }
 
         var serialNumber = Input.SerialNumber.Trim();
+        if (SerialNumber.TryNormalize(serialNumber, out var canonicalSerial))
+            serialNumber = canonicalSerial; // serials in the current format are stored dashless
         if (await db.BciDevices.AnyAsync(d => d.SerialNumber == serialNumber))
         {
             ErrorMessage = $"A device with serial number '{serialNumber}' already exists.";

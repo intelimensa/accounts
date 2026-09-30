@@ -32,7 +32,7 @@
                             @foreach (var device in Model.Devices)
                             {
                                 <li>
-                                    <strong>@device.SerialNumber</strong> (@device.DeviceType) &mdash;
+                                    <strong>@Intelimensa.Accounts.Manufacturing.SerialNumber.ToDisplay(device.SerialNumber)</strong> (@device.DeviceType) &mdash;
                                     @(device.AssignedConfigName ?? "config not yet assigned")
                                     @if (device.UnassignedAt is not null)
                                     {

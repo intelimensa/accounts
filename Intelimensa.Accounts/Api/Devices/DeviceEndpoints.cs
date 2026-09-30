@@ -65,8 +65,7 @@ public static class DeviceEndpoints
             return Results.NotFound("Unknown device or invalid registration code.");
         }
 
-        var serialNumber = request.SerialNumber?.Trim() ?? string.Empty;
-        var bciDevice = await db.BciDevices.FirstOrDefaultAsync(d => d.SerialNumber == serialNumber);
+        var bciDevice = await db.BciDevices.FindBySerialAsync(request.SerialNumber);
         if (bciDevice is null)
             return Refuse();
 
@@ -97,6 +96,7 @@ public static class DeviceEndpoints
             accountDevice.Id,
             bciDevice.Id,
             bciDevice.SerialNumber,
+            SerialNumber.ToDisplay(bciDevice.SerialNumber),
             bciDevice.DeviceType,
             accountDevice.AssignedConfigId,
             accountDevice.RegisteredAt));

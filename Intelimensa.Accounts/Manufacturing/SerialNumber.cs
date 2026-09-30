@@ -1,7 +1,9 @@
 namespace Intelimensa.Accounts.Manufacturing;
 
 /// <summary>
-/// Serial-number format <c>PPPP-RVAA-AAAC</c> (14 characters with dashes):
+/// Serial-number format. The **canonical** form, used everywhere a serial is stored, sent or
+/// compared (database, API, identity record, USB serial string), is 12 plain characters
+/// <c>PPPPRVAAAAAC</c>:
 /// <list type="bullet">
 /// <item><c>PPPP</c> -- 4-character product code (a readable name like "MSV2");</item>
 /// <item><c>R</c> -- regional/hardware variant character (e.g. different line frequency or
@@ -13,8 +15,13 @@ namespace Intelimensa.Accounts.Manufacturing;
 /// <item><c>C</c> -- check character: Luhn mod 36 over the 11 preceding characters, catching
 /// single-character typos and most adjacent transpositions. A typo guard only, no secrecy.</item>
 /// </list>
-/// Characters are uppercase 0-9/A-Z. Everything except the allocator treats serials as opaque
-/// strings, so the layout can evolve; only serials already printed are permanent.
+/// Dashes (<c>PPPP-RVAA-AAAC</c>, see <see cref="ToDisplay"/>) are for human-facing display only,
+/// such as labels and staff pages. They're kept out of the canonical form because some operating
+/// systems rewrite punctuation in a USB serial string (macOS turns it into underscores), which
+/// breaks any exact match. Input is tolerated in display form, with underscores, or lowercase
+/// (<see cref="TryNormalize"/>). Characters are uppercase 0-9/A-Z. Everything except the allocator
+/// treats serials as opaque strings, so the layout can evolve; only serials already printed are
+/// permanent.
 /// </summary>
 public static class SerialNumber
 {
@@ -43,31 +50,54 @@ public static class SerialNumber
             throw new ArgumentOutOfRangeException(nameof(sequence));
 
         var body = $"{product}{region}{FormatVersion}{EncodeSequence(sequence)}"; // 11 chars
-        var check = CheckCharacter(body);
-        return $"{body[..4]}-{body.Substring(4, 4)}-{body[8..]}{check}";
+        return body + CheckCharacter(body);
     }
 
     /// <summary>
-    /// Parses and validates a serial in this format (dashes, alphabet, version and check
-    /// character). <paramref name="prefix"/> is product + region + version, i.e. the part a
-    /// sequence is counted within.
+    /// Human-facing form <c>PPPP-RVAA-AAAC</c> of a canonical serial. A serial that isn't in the
+    /// canonical format (legacy or staff-entered) is returned unchanged.
+    /// </summary>
+    public static string ToDisplay(string serial) =>
+        TryParse(serial, out _, out _)
+            ? $"{serial[..4]}-{serial.Substring(4, 4)}-{serial[8..]}"
+            : serial;
+
+    /// <summary>
+    /// Canonicalizes tolerated input (uppercase; dashes, underscores and whitespace removed) and
+    /// validates it. Returns false if the result isn't a valid canonical serial.
+    /// </summary>
+    public static bool TryNormalize(string? input, out string canonical)
+    {
+        canonical = string.Empty;
+        if (string.IsNullOrWhiteSpace(input))
+            return false;
+
+        var candidate = new string(input.Where(c => c is not ('-' or '_') && !char.IsWhiteSpace(c)).ToArray())
+            .ToUpperInvariant();
+        if (!TryParse(candidate, out _, out _))
+            return false;
+
+        canonical = candidate;
+        return true;
+    }
+
+    /// <summary>
+    /// Parses and validates a canonical (dashless) serial, including its version and check
+    /// character. <paramref name="prefix"/> is product + region + version, i.e. the part a sequence
+    /// is counted within.
     /// </summary>
     public static bool TryParse(string? serial, out string prefix, out int sequence)
     {
         prefix = string.Empty;
         sequence = 0;
 
-        if (serial is not { Length: 14 } || serial[4] != '-' || serial[9] != '-')
+        if (serial is not { Length: 12 } || !serial.All(IsAlphanumeric) || serial[5] != FormatVersion)
+            return false;
+        if (CheckCharacter(serial[..11]) != serial[11])
             return false;
 
-        var body = serial.Remove(9, 1).Remove(4, 1); // 11 body chars + check
-        if (!body.All(IsAlphanumeric) || body[5] != FormatVersion)
-            return false;
-        if (CheckCharacter(body[..11]) != body[11])
-            return false;
-
-        prefix = body[..6];
-        sequence = DecodeSequence(body.Substring(6, SequenceLength));
+        prefix = serial[..6];
+        sequence = DecodeSequence(serial.Substring(6, SequenceLength));
         return true;
     }
 

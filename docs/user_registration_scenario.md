@@ -19,7 +19,7 @@ list.
    `POST /api/auth/login`.
 4. **Confirm the registration when AxoSync asks.** **[server built; AxoSync side planned]** AxoSync reads the unit's serial
    and registration code over the device link (`dcGetIdentity`, see the firmware repo's
-   `DEVICE_IDENTITY.md`) and shows "Register unit MS2-000123 to your account?". The participant
+   `DEVICE_IDENTITY.md`) and shows "Register unit MSV2-G01S-ATCF to your account?" (the dashed display form of the serial). The participant
    confirms; nothing is typed. AxoSync then calls `POST /api/devices/register` with both values.
    - The confirmation guards against registering the wrong unit by accident. The code, not the
      dialog, is the security check.

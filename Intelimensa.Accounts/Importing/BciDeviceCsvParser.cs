@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
 
 namespace Intelimensa.Accounts.Importing;
@@ -62,6 +63,8 @@ public static class BciDeviceCsvParser
 
             string Field(int idx) => idx < fields.Count ? fields[idx].Trim() : string.Empty;
             var serial = Field(serialIdx);
+            if (SerialNumber.TryNormalize(serial, out var canonicalSerial))
+                serial = canonicalSerial; // serials in the current format are stored dashless
             var type = Field(typeIdx);
             var producedRaw = Field(producedIdx);
             var firmware = Field(firmwareIdx);

@@ -90,7 +90,7 @@
     {
         <div class="feature-card d-flex justify-content-between align-items-center">
             <div>
-                <strong>@device.SerialNumber</strong>
+                <strong>@Intelimensa.Accounts.Manufacturing.SerialNumber.ToDisplay(device.SerialNumber)</strong>
                 <span class="badge @(device.Status == Intelimensa.Accounts.Models.BciDeviceStatus.Manufactured ? "text-bg-success" : "text-bg-warning")">@device.Status</span>
                 @if (!device.HasRegistrationCode)
                 {

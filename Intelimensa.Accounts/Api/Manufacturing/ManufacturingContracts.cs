@@ -4,9 +4,14 @@ namespace Intelimensa.Accounts.Api.Manufacturing;
 
 public record ReserveUnitRequest(string DeviceType, string Region, string FirmwareVersion);
 
-/// <summary>Returned by reserve and rekey. The only time the plaintext code is ever exposed.</summary>
+/// <summary>
+/// Returned by reserve and rekey. The only time the plaintext code is ever exposed.
+/// <c>SerialNumber</c> is the canonical dashless form to store and send; <c>SerialNumberLabel</c>
+/// is the dashed form for human-facing display (labels), like <c>RegistrationCodeLabel</c>.
+/// </summary>
 public record IssuedUnitResponse(
     string SerialNumber,
+    string SerialNumberLabel,
     string RegistrationCode,
     string RegistrationCodeLabel,
     string DeviceType,
@@ -27,6 +32,7 @@ public record FirmwareWriteRequest(string SerialNumber, string FirmwareVersion, 
 
 public record UnitResponse(
     string SerialNumber,
+    string SerialNumberLabel,
     string DeviceType,
     BciDeviceStatus Status,
     string FirmwareVersion,

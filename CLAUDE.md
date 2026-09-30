@@ -202,8 +202,11 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   with a null hash.
 - **Manufacturing API** (`Api/Manufacturing/`, `/api/manufacturing/units/{reserve,confirm,void,rekey,firmware}` plus `GET /api/manufacturing/options`):
   JWT, gated by the `Manufacturer` role/policy (separate from `Staff`, seeded at startup, granted by
-  manual SQL like Staff). Account status is re-checked on every call. Serials are `PPPP-RVAA-AAAC`
-  (`Manufacturing/SerialNumber.cs`): 4-char product, region/variant char, format-version char (`0`),
+  manual SQL like Staff). Account status is re-checked on every call. Serials are stored and sent **dashless**,
+  `PPPPRVAAAAAC` (`Manufacturing/SerialNumber.cs`); `SerialNumber.ToDisplay` gives the human-facing
+  `PPPP-RVAA-AAAC` (API responses carry both as `serialNumber`/`serialNumberLabel`) and `TryNormalize`
+  accepts label form/underscores/lowercase, which `BciDeviceLookup.FindBySerialAsync` uses for every
+  serial input (exact match first, so legacy free-form serials still work). Layout: 4-char product, region/variant char, format-version char (`0`),
   5-char base-36 sequence (random step of 1..`MaxSequenceStep` per unit, starting at
   `SequenceStart`, so counts aren't obvious), Luhn mod-36 check character. Product codes come from
   `Manufacturing:ProductCodes` and allowed regions from `Manufacturing:RegionCodes` (both

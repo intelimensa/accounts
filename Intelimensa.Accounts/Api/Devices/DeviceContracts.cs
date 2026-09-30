@@ -10,6 +10,7 @@ public record RegisterDeviceResponse(
     Guid AccountDeviceId,
     Guid BciDeviceId,
     string SerialNumber,
+    string SerialNumberLabel,
     string DeviceType,
     int? AssignedConfigId,
     DateTimeOffset RegisteredAt);

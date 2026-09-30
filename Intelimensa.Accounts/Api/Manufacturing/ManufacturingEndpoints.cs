@@ -83,7 +83,6 @@ public static class ManufacturingEndpoints
 
         var product = productCode.ToUpperInvariant();
         var prefix = product + region + SerialNumber.FormatVersion;
-        var serialPrefix = $"{product}-{region}{SerialNumber.FormatVersion}"; // as stored: the first dash follows PPPP
         var code = RegistrationCode.Generate();
         var now = DateTimeOffset.UtcNow;
 
@@ -95,7 +94,7 @@ public static class ManufacturingEndpoints
         for (var attempt = 0; attempt < MaxSerialAttempts; attempt++)
         {
             var existing = await db.BciDevices
-                .Where(d => d.SerialNumber.StartsWith(serialPrefix))
+                .Where(d => d.SerialNumber.StartsWith(prefix))
                 .Select(d => d.SerialNumber)
                 .ToListAsync();
 
@@ -374,14 +373,12 @@ public static class ManufacturingEndpoints
         return AccountPolicy.IsUsable(account) ? userId : null;
     }
 
-    private static Task<BciDevice?> FindAsync(ApplicationDbContext db, string? serialNumber)
-    {
-        var serial = serialNumber?.Trim() ?? string.Empty;
-        return db.BciDevices.FirstOrDefaultAsync(d => d.SerialNumber == serial);
-    }
+    private static Task<BciDevice?> FindAsync(ApplicationDbContext db, string? serialNumber) =>
+        db.BciDevices.FindBySerialAsync(serialNumber);
 
     private static IssuedUnitResponse Issued(BciDevice unit, string code) => new(
         unit.SerialNumber,
+        SerialNumber.ToDisplay(unit.SerialNumber),
         code,
         RegistrationCode.ToLabelFormat(code),
         unit.DeviceType,
@@ -389,6 +386,7 @@ public static class ManufacturingEndpoints
 
     private static UnitResponse ToResponse(BciDevice unit) => new(
         unit.SerialNumber,
+        SerialNumber.ToDisplay(unit.SerialNumber),
         unit.DeviceType,
         unit.Status,
         unit.CurrentFirmwareVersion,
