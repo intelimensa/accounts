@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
@@ -51,35 +52,43 @@ public static class ManufacturingEndpoints
             return Results.BadRequest($"Unknown device type '{request.DeviceType}'.");
 
         var region = request.Region?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (region.Length != 1 || !(char.IsAsciiDigit(region[0]) || char.IsAsciiLetterUpper(region[0])))
-            return Results.BadRequest("Region must be a single letter or digit.");
+        if (!options.Value.RegionCodes.ContainsKey(region))
+            return Results.BadRequest(
+                $"Unknown region '{request.Region}'. Allowed: {string.Join(", ", options.Value.RegionCodes.Keys.Order())}.");
 
         var firmware = request.FirmwareVersion?.Trim() ?? string.Empty;
         if (firmware.Length is 0 or > 50)
             return Results.BadRequest("FirmwareVersion is required (max 50 characters).");
 
-        var prefix = productCode.ToUpperInvariant() + region;
+        var product = productCode.ToUpperInvariant();
+        var prefix = product + region + SerialNumber.FormatVersion;
+        var serialPrefix = $"{product}-{region}{SerialNumber.FormatVersion}"; // as stored: the first dash follows PPPP
         var code = RegistrationCode.Generate();
         var now = DateTimeOffset.UtcNow;
 
         // Next sequence for this product+region = highest issued (voided serials included, so a
-        // serial is never reused) + 1. The unique index on SerialNumber makes a concurrent reserve
-        // collide instead of duplicate; retry picks up the new maximum.
+        // serial is never reused) plus a random small step, or the configured start for the first
+        // unit. The random step keeps serials from revealing exactly how many units exist. The
+        // unique index on SerialNumber makes a concurrent reserve collide instead of duplicate;
+        // retry picks up the new maximum.
         for (var attempt = 0; attempt < MaxSerialAttempts; attempt++)
         {
             var existing = await db.BciDevices
-                .Where(d => d.SerialNumber.StartsWith(prefix))
+                .Where(d => d.SerialNumber.StartsWith(serialPrefix))
                 .Select(d => d.SerialNumber)
                 .ToListAsync();
 
-            var next = existing
-                .Select(s => SerialNumber.TryParse(s, out var p, out var seq) && p == prefix ? seq : 0)
-                .DefaultIfEmpty(0)
-                .Max() + 1;
+            var highest = existing
+                .Select(ser => SerialNumber.TryParse(ser, out var p, out var seq) && p == prefix ? seq : -1)
+                .DefaultIfEmpty(-1)
+                .Max();
+            var next = highest < 0
+                ? options.Value.SequenceStart
+                : highest + RandomNumberGenerator.GetInt32(1, options.Value.MaxSequenceStep + 1);
             if (next > SerialNumber.MaxSequence)
                 return Results.Problem("Serial number space exhausted for this product/region.", statusCode: 409);
 
-            var serial = SerialNumber.Format(prefix[..3], prefix[3], next);
+            var serial = SerialNumber.Format(product, region[0], next);
             var unit = new BciDevice
             {
                 SerialNumber = serial,

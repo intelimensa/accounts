@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,7 +29,10 @@ builder.Services.AddRazorPages(options =>
 builder.Services.Configure<ReleaseStorageOptions>(builder.Configuration.GetSection("Releases"));
 builder.Services.AddSingleton<IReleaseStorage, LocalReleaseStorage>();
 
-builder.Services.Configure<ManufacturingOptions>(builder.Configuration.GetSection("Manufacturing"));
+builder.Services.AddOptions<ManufacturingOptions>()
+    .Bind(builder.Configuration.GetSection("Manufacturing"))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<ManufacturingOptions>, ManufacturingOptionsValidator>();
 builder.Services.Configure<DeviceRegistrationOptions>(builder.Configuration.GetSection("Devices"));
 builder.Services.AddSingleton<RegistrationFailureLimiter>();
 

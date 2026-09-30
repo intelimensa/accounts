@@ -202,9 +202,12 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   with a null hash.
 - **Manufacturing API** (`Api/Manufacturing/`, `/api/manufacturing/units/{reserve,confirm,void,rekey}`):
   JWT, gated by the `Manufacturer` role/policy (separate from `Staff`, seeded at startup, granted by
-  manual SQL like Staff). Account status is re-checked on every call. Serials are `PPPR-SSSS-SSSC`
-  (`Manufacturing/SerialNumber.cs`, Luhn mod-36 check character); product codes come from
-  `Manufacturing:ProductCodes` (placeholders for now).
+  manual SQL like Staff). Account status is re-checked on every call. Serials are `PPPP-RVAA-AAAC`
+  (`Manufacturing/SerialNumber.cs`): 4-char product, region/variant char, format-version char (`0`),
+  5-char base-36 sequence (random step of 1..`MaxSequenceStep` per unit, starting at
+  `SequenceStart`, so counts aren't obvious), Luhn mod-36 check character. Product codes come from
+  `Manufacturing:ProductCodes` and allowed regions from `Manufacturing:RegionCodes` (both
+  placeholders for now; validated at startup).
 - **JWTs now carry role claims** (`TokenService.CreateAccessToken(user, roles)`), baked in at
   login/refresh like cookie roles.
 - **Registration** (`POST /api/devices/register`): a *new* pairing needs the unit to be

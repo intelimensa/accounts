@@ -11,7 +11,7 @@ built, the app is not.
 1. **Sign in to Quarry** with the station's own account (one per station). **[server built]**
 2. **Pick device type, region and the firmware version** being flashed, and connect the unit.
 3. **Reserve.** Quarry calls `POST /api/manufacturing/units/reserve`. **[server built]**
-   - The server allocates the next serial (`PPPR-SSSS-SSSC`, e.g. `MS2E-0000-001F`) and generates
+   - The server allocates the next serial (`PPPP-RVAA-AAAC`, e.g. `MSV2-G01S-ATCF`) and generates
      a random registration code (e.g. `066N9-6CWEA`).
    - The unit now exists as `Reserved`: it can't be registered by anyone yet.
    - The plaintext code is returned **once**; the server stores only its hash.
@@ -52,8 +52,10 @@ manufacturing flow for real units.
 
 2. Revoking a station: set its account to revoked in `/Staff`. Manufacturing calls re-check the
    account on every request, so it takes effect immediately.
-3. Product codes come from `Manufacturing:ProductCodes` in `appsettings.json` (currently
-   placeholders); a device type not in that map can't be manufactured.
+3. Product codes (4 characters, e.g. `MSV2`) come from `Manufacturing:ProductCodes` and the allowed
+   region/variant characters from `Manufacturing:RegionCodes`, both in `appsettings.json` (currently
+   placeholders). A device type or region not in those maps can't be manufactured, and bad entries
+   stop the server from starting.
 
 ## Firmware updates
 
