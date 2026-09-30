@@ -1,11 +1,14 @@
 using Intelimensa.Accounts.Api.Auth;
 using Intelimensa.Accounts.Api.Devices;
+using Intelimensa.Accounts.Api.Manufacturing;
 using Intelimensa.Accounts.Api.Telemetry;
 using Intelimensa.Accounts.Data;
+using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Security;
 using Intelimensa.Accounts.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -24,6 +27,10 @@ builder.Services.AddRazorPages(options =>
 
 builder.Services.Configure<ReleaseStorageOptions>(builder.Configuration.GetSection("Releases"));
 builder.Services.AddSingleton<IReleaseStorage, LocalReleaseStorage>();
+
+builder.Services.Configure<ManufacturingOptions>(builder.Configuration.GetSection("Manufacturing"));
+builder.Services.Configure<DeviceRegistrationOptions>(builder.Configuration.GetSection("Devices"));
+builder.Services.AddSingleton<RegistrationFailureLimiter>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -89,17 +96,24 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Staff", policy => policy.RequireRole("Staff"));
+
+    // Manufacturing-station API (JWT, not the cookie). Deliberately separate from Staff: a
+    // Manufacturer can mint device identities but sees nothing else, and Staff can't mint them.
+    options.AddPolicy("Manufacturer", policy => policy
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireRole("Manufacturer"));
 });
 
 var app = builder.Build();
 
-// Idempotent: ensures the "Staff" role exists even on a fresh DB. Granting it to a specific user
-// is a manual bootstrap step (see CLAUDE.md) -- there's no UI for it yet.
+// Idempotent: ensures the "Staff" and "Manufacturer" roles exist even on a fresh DB. Granting
+// them to a specific user is a manual bootstrap step (see CLAUDE.md) -- there's no UI for it yet.
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    if (!await roleManager.RoleExistsAsync("Staff"))
-        await roleManager.CreateAsync(new IdentityRole("Staff"));
+    foreach (var role in new[] { "Staff", "Manufacturer" })
+        if (!await roleManager.RoleExistsAsync(role))
+            await roleManager.CreateAsync(new IdentityRole(role));
 }
 
 // Configure the HTTP request pipeline.
@@ -122,6 +136,7 @@ app.MapRazorPages()
    .WithStaticAssets();
 app.MapAuthEndpoints();
 app.MapDeviceEndpoints();
+app.MapManufacturingEndpoints();
 app.MapTelemetryEndpoints();
 
 app.Run();

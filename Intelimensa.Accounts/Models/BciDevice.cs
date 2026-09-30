@@ -23,5 +23,21 @@ public class BciDevice
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    public BciDeviceStatus Status { get; set; } = BciDeviceStatus.Reserved;
+
+    /// <summary>
+    /// Base64 SHA-256 of the normalized registration code (see <c>RegistrationCode</c>); the
+    /// plaintext is only ever returned once, to the manufacturing station. Null for legacy and
+    /// backfilled units, which therefore can't be registered while code checking is on.
+    /// </summary>
+    public string? RegistrationCodeHash { get; set; }
+
+    public DateTimeOffset? ReservedAt { get; set; }
+
+    /// <summary>The Manufacturer-role user who last reserved (or re-keyed) this unit.</summary>
+    public string? ReservedByUserId { get; set; }
+
+    public DateTimeOffset? ManufacturedAt { get; set; }
+
     public List<AccountDevice> AccountDevices { get; set; } = [];
 }

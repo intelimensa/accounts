@@ -9,9 +9,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Intelimensa.Accounts.Pages.Staff;
 
 /// <summary>
-/// The BCI hardware production/inventory list -- entered here as units are manufactured, before
-/// any are distributed to participants. See CLAUDE.md's device-registration design; participants
-/// link themselves to a row here by serial number via <c>POST /api/devices/register</c>.
+/// The BCI hardware production/inventory list. New units are normally created by the manufacturing
+/// station (<c>/api/manufacturing/units</c>), which issues each one a registration code. Rows added
+/// on this page -- one at a time or by CSV -- are <em>backfill</em>: marked Manufactured but with no
+/// registration code, so they can't be newly registered while code checking is on. Participants
+/// link themselves to a row by serial number via <c>POST /api/devices/register</c>.
 /// </summary>
 public class DevicesModel(ApplicationDbContext db) : PageModel
 {
@@ -56,6 +58,8 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
             DeviceType = Input.DeviceType.Trim(),
             ProducedAt = Input.ProducedAt,
             CurrentFirmwareVersion = Input.CurrentFirmwareVersion.Trim(),
+            Status = BciDeviceStatus.Manufactured,
+            ManufacturedAt = DateTimeOffset.UtcNow,
         });
         await db.SaveChangesAsync();
 
@@ -112,6 +116,12 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
             return Page();
         }
 
+        foreach (var device in result.Devices)
+        {
+            device.Status = BciDeviceStatus.Manufactured;
+            device.ManufacturedAt = DateTimeOffset.UtcNow;
+        }
+
         db.BciDevices.AddRange(result.Devices);
         await db.SaveChangesAsync();
 
@@ -134,7 +144,9 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
                 d.ProducedAt,
                 d.CurrentFirmwareVersion,
                 d.LastFirmwareUpdatedAt,
-                d.AccountDevices.Count))
+                d.AccountDevices.Count,
+                d.Status,
+                d.RegistrationCodeHash is not null))
             .ToList();
     }
 
@@ -163,5 +175,7 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
         DateOnly ProducedAt,
         string CurrentFirmwareVersion,
         DateTimeOffset? LastFirmwareUpdatedAt,
-        int RegistrationCount);
+        int RegistrationCount,
+        BciDeviceStatus Status,
+        bool HasRegistrationCode);
 }

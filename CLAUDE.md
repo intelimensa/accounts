@@ -189,6 +189,32 @@ out and back in. This tripped up manual testing once; don't mistake it for the g
 `Pages/Staff/` sits in namespace `Intelimensa.Accounts.Pages.Staff` — no model type is named
 `Staff`, so unlike `Pages/Account/` this doesn't hit the `CS0118` collision described above.
 
+## Device manufacturing & registration codes
+
+Implemented server-side; the station app (MindStoneQuarry) and firmware side live in the
+`firmware` repo (`MindStoneQuarry-design.md`, `DEVICE_IDENTITY.md`). Flow docs: `docs/manufacturer_registration_scenario.md`,
+`docs/user_registration_scenario.md`.
+
+- **`BciDevice` lifecycle** (`BciDeviceStatus`): `Reserved` (code issued, not confirmed) to
+  `Manufactured` (registerable) or `Voided`. `RegistrationCodeHash` is a base64 SHA-256 of the
+  normalized code (`Security/RegistrationCode.cs`); the plaintext is only ever returned by the
+  manufacturing API's `reserve`/`rekey`. Legacy/backfilled units (staff form, CSV) are `Manufactured`
+  with a null hash.
+- **Manufacturing API** (`Api/Manufacturing/`, `/api/manufacturing/units/{reserve,confirm,void,rekey}`):
+  JWT, gated by the `Manufacturer` role/policy (separate from `Staff`, seeded at startup, granted by
+  manual SQL like Staff). Account status is re-checked on every call. Serials are `PPPR-SSSS-SSSC`
+  (`Manufacturing/SerialNumber.cs`, Luhn mod-36 check character); product codes come from
+  `Manufacturing:ProductCodes` (placeholders for now).
+- **JWTs now carry role claims** (`TokenService.CreateAccessToken(user, roles)`), baked in at
+  login/refresh like cookie roles.
+- **Registration** (`POST /api/devices/register`): a *new* pairing needs the unit to be
+  `Manufactured` and, while `Devices:RequireRegistrationCode` is true (default; reversible, codes are
+  generated regardless), the correct code. Unknown serial / unit not registerable / missing or wrong
+  code all return the same generic 404. Re-registering an existing pairing needs no code. Failures
+  are capped at 10/hour per user (`RegistrationFailureLimiter`, in-memory).
+- **Not built**: the station app, AxoSync reading the identity, a firmware-update endpoint, batch
+  reserve for offline factories, any UI to grant `Manufacturer`.
+
 ## Releases & downloads
 
 Implemented — AxoSync installers are published by hand and downloaded by participants, login-gated.

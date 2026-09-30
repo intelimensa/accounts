@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using Intelimensa.Accounts.Data;
+using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Intelimensa.Accounts.Api.Devices;
 
@@ -11,7 +13,9 @@ namespace Intelimensa.Accounts.Api.Devices;
 /// BCI hardware registration -- called by AxoSync the first time it boots up with a given unit.
 /// Validates the serial number against the production list (<see cref="BciDevice"/>) and links it
 /// to the calling account (<see cref="AccountDevice"/>), idempotently: re-registering the same
-/// account+unit pair returns the existing pairing rather than creating a duplicate. A unit may be
+/// account+unit pair returns the existing pairing rather than creating a duplicate. A new pairing
+/// also needs the unit's registration code while <see cref="DeviceRegistrationOptions.RequireRegistrationCode"/>
+/// is on, and repeated failures are rate limited per user (<see cref="RegistrationFailureLimiter"/>). A unit may be
 /// registered to multiple accounts at once (see CLAUDE.md) -- registration never unassigns another
 /// account's pairing to the same serial.
 /// </summary>
@@ -32,7 +36,10 @@ public static class DeviceEndpoints
     private static async Task<IResult> RegisterAsync(
         RegisterDeviceRequest request,
         ClaimsPrincipal user,
-        ApplicationDbContext db)
+        HttpResponse response,
+        ApplicationDbContext db,
+        IOptionsMonitor<DeviceRegistrationOptions> options,
+        RegistrationFailureLimiter limiter)
     {
         var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
         if (userId is null)
@@ -42,16 +49,41 @@ public static class DeviceEndpoints
         if (!AccountPolicy.IsUsable(account))
             return Results.Unauthorized();
 
-        var serialNumber = request.SerialNumber.Trim();
+        var now = DateTimeOffset.UtcNow;
+        if (limiter.RetryAfterSeconds(userId, now) is { } retryAfter)
+        {
+            response.Headers.RetryAfter = retryAfter.ToString();
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        // One generic failure for every reason a *new* pairing can be refused (unknown serial, unit
+        // not yet manufactured or voided, missing/wrong code, unit with no code on file), so the
+        // response can't be used to probe which serials exist.
+        IResult Refuse()
+        {
+            limiter.RecordFailure(userId, now);
+            return Results.NotFound("Unknown device or invalid registration code.");
+        }
+
+        var serialNumber = request.SerialNumber?.Trim() ?? string.Empty;
         var bciDevice = await db.BciDevices.FirstOrDefaultAsync(d => d.SerialNumber == serialNumber);
         if (bciDevice is null)
-            return Results.NotFound("Unknown device serial number.");
+            return Refuse();
 
+        // Re-registering an existing pairing is idempotent and needs no code -- and keeps working
+        // even while the unit is awaiting a re-key/re-flash.
         var accountDevice = await db.AccountDevices
             .FirstOrDefaultAsync(ad => ad.AccountId == account!.Id && ad.BciDeviceId == bciDevice.Id);
 
         if (accountDevice is null)
         {
+            if (bciDevice.Status != BciDeviceStatus.Manufactured)
+                return Refuse();
+
+            if (options.CurrentValue.RequireRegistrationCode &&
+                !RegistrationCode.Verify(request.RegistrationCode, bciDevice.RegistrationCodeHash))
+                return Refuse();
+
             accountDevice = new AccountDevice
             {
                 AccountId = account!.Id,

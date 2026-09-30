@@ -1,48 +1,68 @@
-# Manufacturer scenario: adding devices to the device list
+# Manufacturer scenario: putting a unit on the device list
 
 How a manufactured BCI unit gets onto the device list (`BciDevices`) so a participant can later
-register it. Staff (users with the `Staff` role) do this; participants never touch the list.
-
-> **Status legend:** steps marked **[built]** exist today. Steps marked **[planned]** are the
-> registration-code design, which is agreed but not yet implemented.
+register it. This is done by the **manufacturing station app, MindStoneQuarry**, signed in as a
+user with the `Manufacturer` role. Staff and participants never create units this way. The app's
+design is in the firmware repo (`MindStoneQuarry-design.md`); the server side described here is
+built, the app is not.
 
 ## Steps
 
-1. **Assemble a CSV** with one row per unit produced. **[built]**
+1. **Sign in to Quarry** with the station's own account (one per station). **[server built]**
+2. **Pick device type, region and the firmware version** being flashed, and connect the unit.
+3. **Reserve.** Quarry calls `POST /api/manufacturing/units/reserve`. **[server built]**
+   - The server allocates the next serial (`PPPR-SSSS-SSSC`, e.g. `MS2E-0000-001F`) and generates
+     a random registration code (e.g. `066N9-6CWEA`).
+   - The unit now exists as `Reserved`: it can't be registered by anyone yet.
+   - The plaintext code is returned **once**; the server stores only its hash.
+4. **Flash** the application image plus the per-unit identity record (serial and code), with
+   code-protect on. **[app not built]** See the firmware repo's `DEVICE_IDENTITY.md`.
+5. **Read the identity back** from the running unit (`dcGetIdentity`) and compare. **[app not built]**
+6. **Confirm.** Quarry calls `POST /api/manufacturing/units/confirm` with the code it read back.
+   **[server built]** If it matches the server's hash, the unit becomes `Manufactured` and is
+   registerable.
+7. **Print the label** with the serial and code, and ship the unit. **[app not built]** The label
+   is a fallback for manual entry; participants normally never type either value.
 
-   ```csv
-   serial_number,device_type,produced_at,firmware_version
-   MS2-000123,ms2,2026-09-28,1.4.0
-   MS2-000124,ms2,2026-09-28,1.4.0
+## When things go wrong
+
+- **Flash or readback fails:** re-flash and re-verify, or `void` the reservation. Voided serials
+  are never reused.
+- **Quarry loses the code after reserving:** `rekey` the serial for a fresh code, or `void` it.
+- **Lost or leaked label on a shipped unit:** `rekey` it. The old code stops working immediately,
+  the unit is re-flashed and confirmed again, and participants already paired to it are unaffected.
+- **Confirm retried after a network error:** safe, confirm is idempotent.
+
+## Legacy and manual entry
+
+`/Staff/Devices` still lets staff add units one at a time or by CSV, but these are **backfill
+only**: they're marked `Manufactured` with no registration code, so **they can't be newly
+registered while code checking is on** (`Devices:RequireRegistrationCode`, default true). Use the
+manufacturing flow for real units.
+
+## Setting up a station
+
+1. The station account signs up at the portal like any user, then staff grant the role (no UI yet):
+
+   ```sql
+   INSERT INTO AspNetUserRoles (UserId, RoleId)
+   SELECT u.Id, r.Id FROM AspNetUsers u, AspNetRoles r
+   WHERE u.Email = 'station-01@example.com' AND r.Name = 'Manufacturer';
    ```
 
-   - `device_type` uses the config-key vocabulary (`ms2`, `ms5`, `biosemi`).
-   - `produced_at` is `yyyy-MM-dd`. Columns may be in any order; the header row is required.
-   - Serial numbers must be unique, both within the file and against units already on the list.
+2. Revoking a station: set its account to revoked in `/Staff`. Manufacturing calls re-check the
+   account on every request, so it takes effect immediately.
+3. Product codes come from `Manufacturing:ProductCodes` in `appsettings.json` (currently
+   placeholders); a device type not in that map can't be manufactured.
 
-2. **Sign in as Staff** and open `/Staff/Devices`. **[built]**
-3. **Upload the CSV** under "Import from CSV". **[built]** The import is all-or-nothing: if any row
-   is invalid or a serial already exists, nothing is imported and each problem is listed. Fix the
-   file and upload again.
-4. **Download the registration codes** shown after a successful import. **[planned]**
-   - The server generates one random code per unit (10 characters, unambiguous alphabet, e.g.
-     `7KQ4-M9XT2`) and stores only a hash of it.
-   - The codes are displayed **once**, as a downloadable `serial_number,registration_code` CSV.
-     They can't be recovered afterwards.
-5. **Print each code on the unit's label or insert card** and ship the unit. **[planned]** The
-   code is proof the registrant physically has the unit.
+## Firmware updates
 
-## Later changes
-
-- **Firmware:** AxoSync updates `CurrentFirmwareVersion` / `LastFirmwareUpdatedAt` itself when it
-  performs a firmware upgrade, so manufacturing only supplies the initial version. **[planned]**
-- **Typo in the list:** there's no edit or delete yet. Add an edit/delete page for units with no
-  registrations. **[not built]**
-- **Lost or leaked label:** staff regenerate the code, which replaces the stored hash. The old
-  code stops working; existing registrations are unaffected. **[planned]**
+AxoSync updates `CurrentFirmwareVersion` / `LastFirmwareUpdatedAt` itself when it performs a
+firmware upgrade, so manufacturing only supplies the initial version. **[endpoint not built]**
 
 ## Why the code exists
 
-The serial alone is guessable (serials are usually sequential). Without a second secret, any
-active account could register any serial. Config assignment is still staff-gated, so the risk is
-limited to a stray registration, but the code closes it cheaply while keeping self-service.
+The serial alone is guessable and appears in many places (staff pages, the participant's status
+page, paperwork). The registration code exists only on the unit, its label and as a hash on the
+server, so registering proves you read the unit rather than merely knew its serial. It does not
+defend against someone copying a unit's memory; only readback protection does that.

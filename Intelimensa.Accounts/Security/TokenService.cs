@@ -17,17 +17,20 @@ namespace Intelimensa.Accounts.Security;
 /// </summary>
 public class TokenService(ApplicationDbContext db, IConfiguration configuration)
 {
-    public (string Token, DateTimeOffset ExpiresAt) CreateAccessToken(ApplicationUser user)
+    public (string Token, DateTimeOffset ExpiresAt) CreateAccessToken(ApplicationUser user, IEnumerable<string> roles)
     {
         var lifetime = TimeSpan.FromMinutes(configuration.GetValue("Jwt:AccessTokenLifetimeMinutes", 15));
         var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
 
-        var claims = new[]
+        // Role claims let the API authorize by role (e.g. the Manufacturer policy). They're baked
+        // in at issuance, so a role change takes effect on the next refresh (<= access-token lifetime).
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Sub, user.Id),
+            new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
+        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var token = new JwtSecurityToken(
             issuer: configuration["Jwt:Issuer"],

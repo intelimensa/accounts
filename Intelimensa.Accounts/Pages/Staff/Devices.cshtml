@@ -5,7 +5,11 @@
 }
 
 <h1 class="h3 mb-3">Devices</h1>
-<p class="text-muted">The production/inventory list of physical BCI units, entered as they're manufactured.</p>
+<p class="text-muted">
+    The production/inventory list of physical BCI units. New units are created by the manufacturing
+    station, which issues each a registration code. Units added on this page are <strong>backfill only</strong>:
+    they have no registration code, so they can't be newly registered while code checking is on.
+</p>
 
 @if (Model.StatusMessage is not null)
 {
@@ -87,6 +91,11 @@
         <div class="feature-card d-flex justify-content-between align-items-center">
             <div>
                 <strong>@device.SerialNumber</strong>
+                <span class="badge @(device.Status == Intelimensa.Accounts.Models.BciDeviceStatus.Manufactured ? "text-bg-success" : "text-bg-warning")">@device.Status</span>
+                @if (!device.HasRegistrationCode)
+                {
+                    <span class="badge text-bg-secondary">no code</span>
+                }
                 <div class="text-muted small">
                     Type: @device.DeviceType &middot; Produced @device.ProducedAt.ToString("yyyy-MM-dd")
                     &middot; Firmware @device.CurrentFirmwareVersion

@@ -45,7 +45,7 @@ public static class AuthEndpoints
         if (!AccountPolicy.IsUsable(account))
             return Results.Unauthorized();
 
-        var (accessToken, accessExpiresAt) = tokens.CreateAccessToken(user);
+        var (accessToken, accessExpiresAt) = tokens.CreateAccessToken(user, await userManager.GetRolesAsync(user));
         var (refreshToken, refreshExpiresAt) = await tokens.CreateRefreshTokenAsync(user.Id);
 
         return Results.Ok(new TokenResponse(
@@ -72,7 +72,7 @@ public static class AuthEndpoints
         if (user is null || !AccountPolicy.IsUsable(account))
             return Results.Unauthorized();
 
-        var (accessToken, accessExpiresAt) = tokens.CreateAccessToken(user);
+        var (accessToken, accessExpiresAt) = tokens.CreateAccessToken(user, await userManager.GetRolesAsync(user));
 
         return Results.Ok(new TokenResponse(
             accessToken, accessExpiresAt, refreshToken, refreshExpiresAt,
