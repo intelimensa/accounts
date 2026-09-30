@@ -18,7 +18,7 @@ unless the project's scope actually changes.
 implemented — cookie login for the web portal, `POST /api/auth/{login,refresh,logout}` issuing
 JWT + refresh tokens for AxoSync (see "Auth flow" below), and a `/Staff` area for assigning
 configs to accounts (see "Staff area" below). Config encryption/delivery and device registration
-are still just the plan below, not implemented. Treat sections below as the plan to implement
+are still just the plan below, not implemented (config delivery: see `docs/config-management.md`). Treat sections below as the plan to implement
 except "Data model", "Auth flow", and "Staff area", which now reflect real code — check the files
 directly if in doubt.
 
@@ -68,9 +68,9 @@ rather than trusting this table to stay in sync:
 | Table | Purpose |
 |---|---|
 | `AspNetUsers` (`ApplicationUser : IdentityUser`) | email, password hash (Argon2id), created_at. ASP.NET Core Identity owns this table — there's no separate hand-rolled `Users` table. |
-| `Accounts` | user_id (1:1, unique), assigned_config_id (nullable), status (active/revoked), expires_at |
+| `Accounts` | user_id (1:1, unique), status (active/revoked), expires_at. Config assignment is per registered unit (`AccountDevice.AssignedConfigId`), not per account. |
 | `Devices` | one row per registered client machine — id (guid), account_id, public_key (nullable), platform, registered_at, last_seen_at, revoked |
-| `Configs` | key (unique, matches AxoSync's config stems e.g. `ms2`/`ms5`/`biosemi`), display_name, current_version. No blob/CEK storage yet — that's a config-delivery-phase decision, not a data-model one. |
+| `Configs` | key (unique, matches AxoSync's config stems e.g. `ms2`/`ms5`/`biosemi`), display_name, current_version. No blob/CEK storage yet — planned changes (blob + wrapped CEK per row, `IsDefault`, `RetiredAt`, drop `current_version`) are in `docs/config-management.md`. |
 
 A fifth table, `RefreshTokens` (user_id, token_hash — SHA-256 of the raw token, never the raw value
 itself, created_at, expires_at, revoked_at, replaced_by_token_id for rotation chains), backs the
@@ -85,45 +85,49 @@ file's header comment). Identity is wired via `AddIdentityCore` (not `AddIdentit
 12`, no digit/upper/symbol requirement) per current NIST 800-63B guidance, since Argon2id already
 defends against offline cracking.
 
-## Config delivery model (planned)
+## Config delivery model (agreed, not built)
 
-Configs are already AES-GCM encrypted (PBKDF2, 600k iterations) by AxoSync's own `ConfigGen` — see
-`axosync/CLAUDE.md`'s "Configuration System" section, and the actual implementation in
-`axosync/ConfigGen/Program.cs` (encrypt) / `axosync/AxoSync/Utilities/ConfigLoader.cs` (decrypt,
-`DecryptResource`) for the exact format: `salt(32) ‖ nonce(12) ‖ tag(16) ‖ ciphertext`,
-PBKDF2-SHA256/600k/32-byte salt, AES-256-GCM/12-byte nonce/16-byte tag. Don't reinvent that
-encryption scheme here — see `axosync/notes/accounts-service-integration.md` for the full
-client-side design doc (written from this side, for AxoSync's agent to implement against once
-this service's API exists) covering how the CEK below reuses this same binary layout.
+The full design, its reasoning and the remaining open questions are in
+[`docs/config-management.md`](docs/config-management.md). Read it before building any part of
+config delivery. In summary:
 
-The delivery design (envelope encryption, so the raw content-encryption key is never itself
-transmitted in the clear):
+- **Encryption format stays AxoSync's.** It's `salt(32) ‖ nonce(12) ‖ tag(16) ‖ ciphertext`, with
+  PBKDF2-SHA256 at 600k iterations and AES-256-GCM (`axosync/ConfigGen/Program.cs` encrypts,
+  `axosync/AxoSync/Utilities/ConfigLoader.cs` `DecryptResource` decrypts). Don't reinvent it.
+- **Each config gets a fresh random content key (CEK).** A new ConfigGen "publish" mode generates
+  the CEK and feeds it through the existing format in place of the password. It outputs
+  `<stem>.cfg` (the blob) and `<stem>.key` (the CEK).
+- **Staff upload both files** to a `Config` row at `/Staff/Configs`. The server:
+  - test-decrypts the blob and checks it parses as INI;
+  - stores the blob via an `IConfigStorage` (the same shape as `IReleaseStorage`);
+  - stores the CEK wrapped under a KEK. The KEK is a single secret in configuration
+    (`Configs:KeyEncryptionKey` plus a key ID), loaded like `Jwt:SigningKey`.
+- **Configs aren't versioned.** A different config is a new `Config` row. Re-uploading a file to
+  an existing row is only for key rotation or fixes. `Config.CurrentVersion` is to be dropped.
+- **One config is the default** (`IsDefault`). The staff assignment form pre-selects it, and staff
+  still confirm it. Experimental configs are issued by hand. Assignment stays per `AccountDevice`
+  and staff-only.
+- **Delivery works like this:**
+  - `GET /api/devices/{serial}/config` checks that the account is usable, the pairing is active,
+    and the assigned config has a file and isn't retired. It then returns the CEK and a signed
+    offline lease, with `no-store`, and logs the issuance.
+  - `GET /api/configs/{key}/blob` returns the ciphertext. It's cacheable, with the SHA-256 as the
+    ETag.
+  - The client decrypts in memory, and the plaintext never touches disk.
+- **Offline use works through signed leases.**
+  - A lease is signed by the server and bound to the account, the device serial and the blob's
+    SHA-256.
+  - It lasts 7 days by default (`Configs:OfflineLeaseDays`). Staff can override that per account
+    (`Account.OfflineLeaseDaysOverride`), up to 30 days (`Configs:MaxOfflineLeaseDays`). A lease
+    never runs past the account's `ExpiresAt`.
+  - The client keeps the CEK and lease DPAPI-wrapped (Keychain/Keystore on future mobile builds).
+    It checks the signature, the expiry, the clock and the connected serial before using them
+    offline.
 
-1. Server generates/holds a random Content Encryption Key (CEK) per config (version).
-2. The config payload is encrypted with the CEK using the existing AES-GCM format.
-3. On login, over TLS, the server hands the client the CEK it needs (gated on that account being
-   active, not expired, and entitled to that config) — either directly (baseline: trust TLS +
-   authenticated session) or wrapped to a device-specific public key if a stronger transit
-   guarantee is later warranted.
-4. The client re-wraps whatever it persists locally (the decrypted config, or the CEK) using the
-   host OS's secure-storage primitive before writing anything to disk, so a cached copy is tied
-   to that specific device/user and isn't portable by copying the file elsewhere:
-   - Windows (only platform actively shipping today): DPAPI (`ProtectedData`,
-     `DataProtectionScope.CurrentUser`).
-   - iOS/Android (near-future targets, not yet built): Keychain Services / Android Keystore
-     respectively, behind the same abstraction shape — see `axosync/CLAUDE.md`'s platform
-     abstraction convention (`SerialCommService`, `ISystemControlModule`) for the pattern this
-     should follow when those heads exist.
-   - No browser target is planned for AxoSync, so no browser-side secure storage is needed here.
-5. Client caches the decrypted config for offline use, re-validating (refreshing) opportunistically
-   when online; a refresh-token expiry drives an offline grace period rather than requiring the
-   app to be online on every launch.
-
-**Explicitly out of scope for this design**: preventing an authorized, licensed user from
-extracting the plaintext config once their own copy of the app has decrypted it to run the
-pipeline (e.g. via a memory dump on their own machine). No key-delivery or at-rest scheme solves
-that — it's a runtime-hardening / anti-tamper / watermarking problem, tracked separately, not
-something this service's API design can fix.
+**Explicitly out of scope**: preventing an authorized participant from extracting the plaintext
+config from their own running app (for example via a memory dump). No key-delivery scheme solves
+that. The doc's threat-model section covers the mitigations, and explains why moving the pipeline
+onto the device isn't viable on current hardware.
 
 ## Auth flow
 
