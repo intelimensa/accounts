@@ -149,7 +149,8 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
                 d.LastFirmwareUpdatedAt,
                 d.AccountDevices.Count,
                 d.Status,
-                d.RegistrationCodeHash is not null))
+                d.RegistrationCodeHash is not null,
+                d.BootloaderVersion))
             .ToList();
     }
 
@@ -180,5 +181,6 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
         DateTimeOffset? LastFirmwareUpdatedAt,
         int RegistrationCount,
         BciDeviceStatus Status,
-        bool HasRegistrationCode);
+        bool HasRegistrationCode,
+        string? BootloaderVersion);
 }

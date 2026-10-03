@@ -56,4 +56,14 @@ public class BciDeviceEvent
     /// version the station said it intends to flash (applied only at confirm).
     /// </summary>
     public string? FirmwareVersionAfter { get; set; }
+
+    /// <summary>The unit's recorded bootloader version before this event (null if none/unknown).</summary>
+    public string? BootloaderVersionBefore { get; set; }
+
+    /// <summary>
+    /// The bootloader version this event left the unit with -- or, for
+    /// <see cref="BciDeviceEventType.Reserved"/> and <see cref="BciDeviceEventType.Rekeyed"/>, the
+    /// version the station said it intends to flash (applied only at confirm).
+    /// </summary>
+    public string? BootloaderVersionAfter { get; set; }
 }

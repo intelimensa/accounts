@@ -99,6 +99,10 @@
                 <div class="text-muted small">
                     Type: @device.DeviceType &middot; Produced @device.ProducedAt.ToString("yyyy-MM-dd")
                     &middot; Firmware @device.CurrentFirmwareVersion
+                    @if (device.BootloaderVersion is not null)
+                    {
+                        <text> &middot; Bootloader @device.BootloaderVersion</text>
+                    }
                     @if (device.LastFirmwareUpdatedAt is { } updatedAt)
                     {
                         <text> (updated @updatedAt.ToString("yyyy-MM-dd"))</text>

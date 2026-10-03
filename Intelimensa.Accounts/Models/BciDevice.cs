@@ -26,6 +26,15 @@ public class BciDevice
 
     public DateTimeOffset? LastFirmwareUpdatedAt { get; set; }
 
+    /// <summary>
+    /// The bootloader's version, for units that have one (MS-V3; same <c>MAJOR.HEIGHT+hash</c> form
+    /// as the app's). Null for units without a bootloader (MS-V2), and for units whose bootloader
+    /// version was never reported. Written once at the factory, so it only changes through a
+    /// programmer flash (reported at confirm, or by /firmware afterwards). An app update over USB
+    /// leaves it alone.
+    /// </summary>
+    public string? BootloaderVersion { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public BciDeviceStatus Status { get; set; } = BciDeviceStatus.Reserved;

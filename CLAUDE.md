@@ -221,7 +221,11 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   returns the unit to Reserved. Firmware fields are applied at `confirm` (or `/firmware`, for
   firmware writes that leave the registration code unchanged): `LastFirmwareUpdatedAt` always
   moves, `CurrentFirmwareVersion` only if it differs. `ManufacturedAt`/`ProducedAt` are set on the first
-  confirm only. `void` is refused if any participant is paired. Region has no server default.
+  confirm only. **Bootloader version** (MS-V3 units have a bootloader plus an app): an optional
+  `bootloaderVersion` rides along with `firmwareVersion` on `reserve`/`confirm`/`rekey`/`/firmware`,
+  stored as `BciDevice.BootloaderVersion` and in the event history; given replaces, omitted leaves it
+  unchanged (never cleared; null for MS-V2). Like firmware it's applied at `confirm`/`/firmware`, only
+  recorded as *intended* at `reserve`/`rekey`; an app update over USB omits it. `void` is refused if any participant is paired. Region has no server default.
 - **JWTs now carry role claims** (`TokenService.CreateAccessToken(user, roles)`), baked in at
   login/refresh like cookie roles.
 - **Registration** (`POST /api/devices/register`): a *new* pairing needs the unit to be

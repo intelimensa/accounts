@@ -47,8 +47,14 @@ built, the app is not.
   Quarry can read it from the running unit before erasing and write it back afterwards. Then there's
   no rekey and no new label; just record it with the `firmware` endpoint. If the identity can't be
   read first (blank, corrupt, older firmware), rekey instead.
+- **MS-V3 units (bootloader + app):** besides the firmware version, Quarry sends the bootloader's
+  version (`bootloaderVersion`, read from the factory image) on reserve, confirm and rekey. It's
+  recorded on the unit and in its history; omit it for units without a bootloader (MS-V2). An app
+  update over USB doesn't touch the bootloader, so it's recorded with the `firmware` endpoint and no
+  `bootloaderVersion`; after a programmer flash that restored the same identity, send the version
+  that was written.
 - **History:** every reserve, confirm, void, rekey and firmware write is recorded per unit (who,
-  when, reason, firmware before and after; never the code).
+  when, reason, firmware and bootloader versions before and after; never the code).
 - **Confirm retried after a network error:** safe, confirm is idempotent.
 
 ## Serial format: dashless, with a display form

@@ -2,7 +2,11 @@ using Intelimensa.Accounts.Models;
 
 namespace Intelimensa.Accounts.Api.Manufacturing;
 
-public record ReserveUnitRequest(string DeviceType, string Region, string FirmwareVersion);
+/// <summary>
+/// <paramref name="BootloaderVersion"/> is optional everywhere it appears: send it for units that have a
+/// bootloader (MS-V3, taken from the factory image), omit it for those that don't (MS-V2).
+/// </summary>
+public record ReserveUnitRequest(string DeviceType, string Region, string FirmwareVersion, string? BootloaderVersion = null);
 
 /// <summary>
 /// Returned by reserve and rekey. The only time the plaintext code is ever exposed.
@@ -17,7 +21,7 @@ public record IssuedUnitResponse(
     string DeviceType,
     DateTimeOffset ReservedAt);
 
-public record ConfirmUnitRequest(string SerialNumber, string RegistrationCode, string FirmwareVersion);
+public record ConfirmUnitRequest(string SerialNumber, string RegistrationCode, string FirmwareVersion, string? BootloaderVersion = null);
 
 public record UnitRequest(string SerialNumber);
 
@@ -26,9 +30,9 @@ public record UnitRequest(string SerialNumber);
 /// <paramref name="FirmwareVersion"/> is the version the station intends to flash; it's recorded in
 /// the unit's history but only applied to the unit at <c>confirm</c>.
 /// </summary>
-public record RekeyUnitRequest(string SerialNumber, string? Reason, string? Note, string FirmwareVersion);
+public record RekeyUnitRequest(string SerialNumber, string? Reason, string? Note, string FirmwareVersion, string? BootloaderVersion = null);
 
-public record FirmwareWriteRequest(string SerialNumber, string FirmwareVersion, string? Note);
+public record FirmwareWriteRequest(string SerialNumber, string FirmwareVersion, string? Note, string? BootloaderVersion = null);
 
 public record UnitResponse(
     string SerialNumber,
@@ -36,6 +40,7 @@ public record UnitResponse(
     string DeviceType,
     BciDeviceStatus Status,
     string FirmwareVersion,
+    string? BootloaderVersion,
     DateTimeOffset? ManufacturedAt,
     DateTimeOffset? FirmwareUpdatedAt);
 

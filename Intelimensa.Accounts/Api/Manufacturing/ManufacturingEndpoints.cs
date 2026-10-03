@@ -80,6 +80,9 @@ public static class ManufacturingEndpoints
         if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
             return firmwareError;
         var firmware = request.FirmwareVersion.Trim();
+        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
+            return bootloaderError;
+        var bootloader = NormalizeBootloader(request.BootloaderVersion);
 
         var product = productCode.ToUpperInvariant();
         var prefix = product + region + SerialNumber.FormatVersion;
@@ -128,6 +131,7 @@ public static class ManufacturingEndpoints
                 OccurredAt = now,
                 UserId = userId,
                 FirmwareVersionAfter = firmware,
+                BootloaderVersionAfter = bootloader, // intended; applied to the unit at confirm
             });
 
             try
@@ -172,12 +176,15 @@ public static class ManufacturingEndpoints
         if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
             return firmwareError;
         var firmware = request.FirmwareVersion.Trim();
+        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
+            return bootloaderError;
 
         // Idempotent: a retried confirm for an already-manufactured unit just reports success.
         if (unit.Status == BciDeviceStatus.Reserved)
         {
             var now = DateTimeOffset.UtcNow;
             var before = unit.CurrentFirmwareVersion;
+            var bootloaderBefore = unit.BootloaderVersion;
 
             // ManufacturedAt/ProducedAt record the *first* confirmation; a reworked unit keeps them.
             if (unit.ManufacturedAt is null)
@@ -188,7 +195,9 @@ public static class ManufacturingEndpoints
 
             unit.Status = BciDeviceStatus.Manufactured;
             ApplyFirmware(unit, firmware, now);
-            AddEvent(db, unit, BciDeviceEventType.Confirmed, userId, now, before: before, after: firmware);
+            ApplyBootloader(unit, NormalizeBootloader(request.BootloaderVersion));
+            AddEvent(db, unit, BciDeviceEventType.Confirmed, userId, now, before: before, after: firmware,
+                bootloaderBefore: bootloaderBefore, bootloaderAfter: unit.BootloaderVersion);
 
             await db.SaveChangesAsync();
             logger.LogInformation("Unit {Serial} confirmed manufactured by {UserId}", unit.SerialNumber, userId);
@@ -250,6 +259,8 @@ public static class ManufacturingEndpoints
             return noteError;
         if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
             return firmwareError;
+        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
+            return bootloaderError;
 
         var unit = await FindAsync(db, request.SerialNumber);
         if (unit is null)
@@ -269,7 +280,8 @@ public static class ManufacturingEndpoints
         unit.ReservedByUserId = userId;
         AddEvent(db, unit, BciDeviceEventType.Rekeyed, userId, now,
             reason: reason, note: request.Note?.Trim(),
-            before: unit.CurrentFirmwareVersion, after: request.FirmwareVersion.Trim());
+            before: unit.CurrentFirmwareVersion, after: request.FirmwareVersion.Trim(),
+            bootloaderBefore: unit.BootloaderVersion, bootloaderAfter: NormalizeBootloader(request.BootloaderVersion));
         await db.SaveChangesAsync();
 
         logger.LogInformation("Unit {Serial} re-keyed ({Reason}) by {UserId}", unit.SerialNumber, reason, userId);
@@ -290,6 +302,8 @@ public static class ManufacturingEndpoints
             return noteError;
         if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
             return firmwareError;
+        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
+            return bootloaderError;
 
         var unit = await FindAsync(db, request.SerialNumber);
         if (unit is null)
@@ -301,10 +315,15 @@ public static class ManufacturingEndpoints
         // the unit before the erase and restored), so the label stays valid.
         var now = DateTimeOffset.UtcNow;
         var before = unit.CurrentFirmwareVersion;
+        var bootloaderBefore = unit.BootloaderVersion;
         var firmware = request.FirmwareVersion.Trim();
         ApplyFirmware(unit, firmware, now);
+        // An app update over USB doesn't touch the bootloader, so a client leaves this out. It's sent
+        // after a programmer flash restored the same identity, which rewrites the bootloader too.
+        ApplyBootloader(unit, NormalizeBootloader(request.BootloaderVersion));
         AddEvent(db, unit, BciDeviceEventType.FirmwareWritten, userId, now,
-            note: request.Note?.Trim(), before: before, after: firmware);
+            note: request.Note?.Trim(), before: before, after: firmware,
+            bootloaderBefore: bootloaderBefore, bootloaderAfter: unit.BootloaderVersion);
         await db.SaveChangesAsync();
 
         logger.LogInformation("Unit {Serial} firmware written ({Before} -> {After}) by {UserId}",
@@ -323,6 +342,26 @@ public static class ManufacturingEndpoints
         unit.LastFirmwareUpdatedAt = now;
     }
 
+    /// <summary>
+    /// The bootloader rule: a version that's given replaces the recorded one; one that's omitted
+    /// leaves it unchanged (so an app update over USB, which never touches the bootloader, can't
+    /// erase it). There's no way to clear it: no flow reflashes a bootloader-less image onto a unit
+    /// that had one.
+    /// </summary>
+    private static void ApplyBootloader(BciDevice unit, string? version)
+    {
+        if (version is not null && unit.BootloaderVersion != version)
+            unit.BootloaderVersion = version;
+    }
+
+    private static string? NormalizeBootloader(string? version) =>
+        string.IsNullOrWhiteSpace(version) ? null : version.Trim();
+
+    private static IResult? ValidateBootloader(string? version) =>
+        version?.Trim() is { Length: > 50 }
+            ? Results.BadRequest("BootloaderVersion is too long (max 50 characters).")
+            : null;
+
     private static void AddEvent(
         ApplicationDbContext db,
         BciDevice unit,
@@ -332,7 +371,9 @@ public static class ManufacturingEndpoints
         RekeyReason? reason = null,
         string? note = null,
         string? before = null,
-        string? after = null) =>
+        string? after = null,
+        string? bootloaderBefore = null,
+        string? bootloaderAfter = null) =>
         db.BciDeviceEvents.Add(new BciDeviceEvent
         {
             BciDeviceId = unit.Id,
@@ -343,6 +384,8 @@ public static class ManufacturingEndpoints
             Note = string.IsNullOrWhiteSpace(note) ? null : note,
             FirmwareVersionBefore = before,
             FirmwareVersionAfter = after,
+            BootloaderVersionBefore = bootloaderBefore,
+            BootloaderVersionAfter = bootloaderAfter,
         });
 
     private static IResult? ValidateFirmware(string? firmwareVersion)
@@ -390,6 +433,7 @@ public static class ManufacturingEndpoints
         unit.DeviceType,
         unit.Status,
         unit.CurrentFirmwareVersion,
+        unit.BootloaderVersion,
         unit.ManufacturedAt,
         unit.LastFirmwareUpdatedAt);
 
