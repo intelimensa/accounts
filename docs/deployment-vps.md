@@ -26,12 +26,12 @@ Target stack: Ubuntu 24.04 LTS, .NET 10 runtime, Nginx, systemd, Let's Encrypt (
 SSH in as root, then:
 
 ```bash
-# Create a non-root deploy user
-adduser deploy
-usermod -aG sudo deploy
+# Create a non-root sudo user
+adduser harald
+usermod -aG sudo harald
 
 # Copy your SSH key to the new user (from your local machine)
-# ssh-copy-id deploy@<server-ip>
+# ssh-copy-id harald@<server-ip>
 
 # Disable root SSH login and password auth
 # Edit /etc/ssh/sshd_config:
@@ -50,7 +50,7 @@ sudo ufw enable
 sudo apt install -y fail2ban
 ```
 
-From here on, do everything as the `deploy` user over SSH, not root.
+From here on, do everything as the `harald` user over SSH, not root.
 
 ## 3. Install the .NET 10 runtime
 
@@ -58,16 +58,33 @@ This app targets `net10.0` (see `Intelimensa.Accounts.csproj`). You only need th
 **ASP.NET Core runtime** on the server, not the SDK (build happens elsewhere — see
 step 6).
 
+As of this writing, Microsoft's `packages.microsoft.com` apt feed for Ubuntu 22.04
+(`jammy`) doesn't carry .NET 10 packages yet — `apt-cache search aspnetcore-runtime`
+tops out at 8.0. Rather than wait on the feed, use Microsoft's install script, which
+downloads the exact runtime build directly instead of going through apt:
+
 ```bash
-wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+chmod +x dotnet-install.sh
+sudo ./dotnet-install.sh --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet
+rm dotnet-install.sh
+
+sudo ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet
+```
+
+Verify: `dotnet --list-runtimes` should show `Microsoft.AspNetCore.App 10.x` and
+`Microsoft.NETCore.App 10.x`.
+
+If the apt feed catches up later and you'd rather manage updates via `apt`, the
+original approach was:
+
+```bash
+wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
 sudo dpkg -i packages-microsoft-prod.deb
 rm packages-microsoft-prod.deb
-
 sudo apt update
 sudo apt install -y aspnetcore-runtime-10.0
 ```
-
-Verify: `dotnet --list-runtimes` should show `Microsoft.AspNetCore.App 10.x`.
 
 ## 4. Install and configure Nginx
 
@@ -145,7 +162,7 @@ dotnet publish -c Release -o ./publish
 Copy the output to the server (adjust path/user as needed):
 
 ```bash
-rsync -avz --delete ./publish/ deploy@accounts.intelimensa.com:/var/www/accounts/app/
+rsync -avz --delete ./publish/ harald@accounts.intelimensa.com:/var/www/accounts/app/
 ```
 
 On the server, create the app directory and a persistent data directory for the
@@ -153,7 +170,7 @@ SQLite database (kept separate from the app bundle so redeploys don't touch it):
 
 ```bash
 sudo mkdir -p /var/www/accounts/app /var/www/accounts/data
-sudo chown -R deploy:deploy /var/www/accounts
+sudo chown -R harald:harald /var/www/accounts
 ```
 
 ## 7. Configuration and secrets in production
@@ -183,26 +200,45 @@ Description=Intelimensa Accounts
 After=network.target
 
 [Service]
-Type=notify
+Type=simple
 WorkingDirectory=/var/www/accounts/app
 ExecStart=/usr/bin/dotnet /var/www/accounts/app/Intelimensa.Accounts.dll
 Restart=always
 RestartSec=5
-User=deploy
-Group=deploy
+User=harald
+Group=harald
 
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5000
 Environment=Jwt__SigningKey=REPLACE_WITH_GENERATED_BASE64_KEY
-Environment=ConnectionStrings__DefaultConnection=Data Source=/var/www/accounts/data/accounts.db
+Environment="ConnectionStrings__DefaultConnection=Data Source=/var/www/accounts/data/accounts.db"
 # Uploaded release binaries. Must be outside /var/www/accounts/app (rsync --delete would wipe it).
 Environment=Releases__StoragePath=/var/www/accounts/data/releases
+# Firmware hex catalog for the manufacturing station; same rule.
+Environment=Firmware__StoragePath=/var/www/accounts/data/firmware
 
 SyslogIdentifier=intelimensa-accounts
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+Two gotchas that bit during the first real deploy, worth knowing about rather than
+rediscovering:
+
+- **`Type=notify` hangs and times out.** It tells systemd to wait for a `READY=1`
+  signal via `sd_notify` before considering the service up — but this app never
+  calls `.UseSystemd()`, so that signal never arrives. The app itself starts fine
+  (you'll see "Application started" in the logs), but systemd kills it ~90s later
+  as a timeout anyway. `Type=simple` doesn't wait for any such signal.
+- **Quote any `Environment=` value that contains a space.** systemd's `Environment=`
+  splits on whitespace unless the whole `KEY=VALUE` assignment is wrapped in double
+  quotes. The connection string's `Data Source=...` has a space in it — without the
+  quotes shown above, systemd silently splits it into two bogus environment
+  variables (`ConnectionStrings__DefaultConnection=Data` and
+  `Source=/var/www/.../accounts.db`), and the app crashes on startup with `System
+  .ArgumentException: Format of the initialization string does not conform to
+  specification`.
 
 Enable and start it:
 
@@ -225,12 +261,12 @@ loopback-bound DB file directly:
 dotnet ef migrations script -o migrate.sql
 
 # Copy and apply on the server (sqlite3 CLI)
-scp migrate.sql deploy@accounts.intelimensa.com:/tmp/
-ssh deploy@accounts.intelimensa.com
+scp migrate.sql harald@accounts.intelimensa.com:/tmp/
+ssh harald@accounts.intelimensa.com
 sqlite3 /var/www/accounts/data/accounts.db < /tmp/migrate.sql
 ```
 
-On first deploy this also creates the `accounts.db` file — confirm the `deploy`
+On first deploy this also creates the `accounts.db` file — confirm the `harald`
 user owns `/var/www/accounts/data` (step 6) so the running service can write to it.
 
 ## 10. TLS via Let's Encrypt
@@ -251,20 +287,58 @@ sudo systemctl status certbot.timer
 
 ## 11. Seed the first Staff user
 
-The `Staff` role is seeded automatically on startup (per `Program.cs`), but no
-account holds it yet. After registering a normal account through the web portal
-at `https://accounts.intelimensa.com/Account/Register`, promote it manually:
+Neither the `Staff` nor `Manufacturer` role has a UI to grant it (see "Staff area"
+and "Device manufacturing & registration codes" in `CLAUDE.md`) — both are seeded
+automatically at startup, but promoting an account into one is a manual step.
+`scripts/setrole.sh` in this repo does that against the production DB directly,
+rather than hand-writing `INSERT`/`DELETE` SQL each time.
+
+Admin scripts like this one live in `/var/www/accounts/scripts` on the server —
+a sibling of `app/` and `data/`, so `rsync --delete` on app redeploys (step 12)
+never touches them. `/usr/local/bin` holds symlinks for the short command names;
+the scripts themselves are versioned here in the repo. Set up the directory once:
 
 ```bash
-sqlite3 /var/www/accounts/data/accounts.db <<'SQL'
-INSERT INTO AspNetUserRoles (UserId, RoleId)
-SELECT u.Id, r.Id FROM AspNetUsers u, AspNetRoles r
-WHERE u.Email = 'someone@example.com' AND r.Name = 'Staff';
-SQL
+# On the server
+sudo mkdir -p /var/www/accounts/scripts
+sudo chown harald:harald /var/www/accounts/scripts
+```
+
+Then, to deploy this (or any future) script under `scripts/`:
+
+```bash
+# Local — syncs the whole scripts/ folder; re-run this whenever a script changes
+rsync -avz --delete scripts/ harald@accounts.intelimensa.com:/var/www/accounts/scripts/
+
+# On the server
+chmod +x /var/www/accounts/scripts/*.sh
+sudo ln -sf /var/www/accounts/scripts/setrole.sh /usr/local/bin/setrole
+```
+
+It defaults to `/var/www/accounts/data/accounts.db` (override with `$SETROLE_DB`
+if ever needed) and is idempotent — granting a role someone already has, or
+revoking one they don't, is a no-op rather than an error.
+
+After registering a normal account through the web portal at
+`https://accounts.intelimensa.com/Account/Register`, promote it:
+
+```bash
+setrole --account someone@example.com --role Staff --enabled
 ```
 
 Remember: role claims are baked into the auth cookie at sign-in, so that user must
 log out and back in before the `/Staff` area becomes visible to them.
+
+The `Manufacturer` role (gates the `/api/manufacturing/*` endpoints used by the
+manufacturing station app) works the same way:
+
+```bash
+setrole --account someone@example.com --role Manufacturer --enabled
+```
+
+Unlike `Staff`, JWTs (not just the cookie) carry this role, so a client holding an
+already-issued access token won't see the grant until it refreshes. To revoke
+either role, swap `--enabled` for `--disabled`.
 
 ## 12. Redeploying after code changes
 
@@ -272,10 +346,10 @@ log out and back in before the `/Staff` area becomes visible to them.
 # Local
 cd Intelimensa.Accounts
 dotnet publish -c Release -o ./publish
-rsync -avz --delete --exclude 'accounts.db' ./publish/ deploy@accounts.intelimensa.com:/var/www/accounts/app/
+rsync -avz --delete --exclude 'accounts.db' ./publish/ harald@accounts.intelimensa.com:/var/www/accounts/app/
 
 # Server
-ssh deploy@accounts.intelimensa.com
+ssh harald@accounts.intelimensa.com
 sudo systemctl restart intelimensa-accounts
 ```
 
@@ -289,7 +363,7 @@ A simple cron-based daily copy is enough at this scale:
 
 ```bash
 # /etc/cron.d/accounts-backup
-0 3 * * * deploy sqlite3 /var/www/accounts/data/accounts.db ".backup /var/www/accounts/backups/accounts-$(date +\%F).db"
+0 3 * * * harald sqlite3 /var/www/accounts/data/accounts.db ".backup /var/www/accounts/backups/accounts-$(date +\%F).db"
 ```
 
 Use `sqlite3 .backup` rather than `cp` — it's safe against concurrent writes from
@@ -369,3 +443,7 @@ obscurity" is worth doing even for a short-lived test deploy.
   uptime check (e.g. an external ping service) against
   `https://accounts.intelimensa.com`, since `systemctl enable --now` + `Restart=always`
   only protects against process crashes, not the VPS itself going down.
+- **`Manufacturing:ProductCodes`/`RegionCodes` in `appsettings.json`**: product
+  codes are the firmware families (`msv1`/`msv2`/`msv3` → `MSV1`/`MSV2`/`MSV3`),
+  region is `G` only. Confirm the region list matches what you intend to issue
+  serials under before the manufacturing API is used for anything real.
