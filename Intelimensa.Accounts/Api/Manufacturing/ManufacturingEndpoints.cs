@@ -4,6 +4,7 @@ using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Security;
+using Intelimensa.Accounts.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -32,6 +33,10 @@ public static class ManufacturingEndpoints
 
         group.MapGet("/options", GetOptions);
 
+        var firmware = group.MapGroup("/firmware");
+        firmware.MapGet("/", ListFirmwareAsync);
+        firmware.MapGet("/{id:int}/file", DownloadFirmwareAsync);
+
         var units = group.MapGroup("/units");
         units.MapPost("/reserve", ReserveAsync);
         units.MapPost("/confirm", ConfirmAsync);
@@ -53,6 +58,52 @@ public static class ManufacturingEndpoints
                 .Select(r => new RegionOption(r.Key.ToUpperInvariant(), r.Value))
                 .ToList(),
             Enum.GetNames<RekeyReason>().ToList()));
+
+    /// <summary>
+    /// The catalog the station picks from. Only Published builds; <c>deviceType</c> is optional and
+    /// filters to one product (case-insensitive).
+    /// </summary>
+    private static async Task<IResult> ListFirmwareAsync(
+        string? deviceType,
+        ClaimsPrincipal user,
+        ApplicationDbContext db)
+    {
+        if (await RequireUsableAccountAsync(user, db) is null)
+            return Results.Unauthorized();
+
+        var type = deviceType?.Trim().ToLowerInvariant();
+        var query = db.FirmwareBuilds.Where(b => b.Status == FirmwareBuildStatus.Published);
+        if (!string.IsNullOrEmpty(type))
+            query = query.Where(b => b.DeviceType == type);
+
+        var builds = await query.ToListAsync();
+        // SQLite's EF provider can't ORDER BY DateTimeOffset -- sort client-side, newest first.
+        return Results.Ok(builds
+            .OrderBy(b => b.DeviceType).ThenBy(b => b.Kind).ThenByDescending(b => b.PublishedAt)
+            .Select(b => new FirmwareBuildResponse(
+                b.Id, b.DeviceType, b.Kind.ToString(), b.Version, b.Notes,
+                b.FileName, b.SizeBytes, b.Sha256, b.PublishedAt!.Value))
+            .ToList());
+    }
+
+    private static async Task<IResult> DownloadFirmwareAsync(
+        int id,
+        ClaimsPrincipal user,
+        HttpResponse response,
+        ApplicationDbContext db,
+        IFirmwareStorage storage)
+    {
+        if (await RequireUsableAccountAsync(user, db) is null)
+            return Results.Unauthorized();
+
+        var build = await db.FirmwareBuilds.FindAsync(id);
+        if (build is null || build.Status != FirmwareBuildStatus.Published)
+            return Results.NotFound("Unknown or unavailable firmware build.");
+
+        // Immutable once uploaded, so the hash is a valid strong validator.
+        response.Headers.ETag = $"\"{build.Sha256}\"";
+        return Results.File(storage.OpenRead(build.StorageKey), "application/octet-stream", build.FileName);
+    }
 
     private static async Task<IResult> ReserveAsync(
         ReserveUnitRequest request,

@@ -17,7 +17,12 @@ public class BciDevice
     /// </summary>
     public required string SerialNumber { get; set; }
 
-    /// <summary>Matches <see cref="Config.Key"/> vocabulary, e.g. "ms2", "ms5", "biosemi".</summary>
+    /// <summary>
+    /// The firmware family the unit is built around, one of the keys of <c>Manufacturing:ProductCodes</c>:
+    /// "msv1" and "msv2" are standalone firmware, "msv3" is a bootloader that accepts several application
+    /// versions. This is not the <see cref="Config.Key"/> vocabulary: which config a unit gets is a staff
+    /// assignment per unit, never derived from the type.
+    /// </summary>
     public required string DeviceType { get; set; }
 
     public DateOnly ProducedAt { get; set; }

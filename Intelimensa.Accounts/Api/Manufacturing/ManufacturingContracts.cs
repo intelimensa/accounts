@@ -52,3 +52,19 @@ public record ManufacturingOptionsResponse(
     List<ProductOption> Products,
     List<RegionOption> Regions,
     List<string> RekeyReasons);
+
+/// <summary>
+/// One flashable build in the firmware catalog. <c>Version</c> is what the station reports back as
+/// <c>firmwareVersion</c> (or <c>bootloaderVersion</c> for <c>Kind == Bootloader</c>); <c>Sha256</c>
+/// is lowercase hex of the file the download returns.
+/// </summary>
+public record FirmwareBuildResponse(
+    int Id,
+    string DeviceType,
+    string Kind,
+    string Version,
+    string? Notes,
+    string FileName,
+    long SizeBytes,
+    string Sha256,
+    DateTimeOffset PublishedAt);

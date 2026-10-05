@@ -213,8 +213,10 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   serial input (exact match first, so legacy free-form serials still work). Layout: 4-char product, region/variant char, format-version char (`0`),
   5-char base-36 sequence (random step of 1..`MaxSequenceStep` per unit, starting at
   `SequenceStart`, so counts aren't obvious), Luhn mod-36 check character. Product codes come from
-  `Manufacturing:ProductCodes` and allowed regions from `Manufacturing:RegionCodes` (both
-  placeholders for now; validated at startup).
+  `Manufacturing:ProductCodes` and allowed regions from `Manufacturing:RegionCodes` (validated at
+  startup). The device type is the firmware family, not a config key: `msv1`/`msv2` (standalone
+  firmware) and `msv3` (bootloader that takes several application versions) map to `MSV1`/`MSV2`/`MSV3`.
+  Which config a unit uses is a separate per-unit staff assignment.
 - **Unit history and firmware rules**: every manufacturing call appends a `BciDeviceEvent` (never a
   code). `rekey` needs a `reason` (`RekeyReason`: Relabel/Reflash/Rework, parsed from a string), an
   optional note and the *intended* `firmwareVersion`; it works on Reserved and Manufactured units and
@@ -235,6 +237,29 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   are capped at 10/hour per user (`RegistrationFailureLimiter`, in-memory).
 - **Not built**: the station app, AxoSync reading the identity, a participant/AxoSync-facing firmware-update endpoint (the manufacturing one is built), batch
   reserve for offline factories, any UI to grant `Manufacturer`.
+
+## Firmware catalog
+
+Implemented server-side — Quarry flashes only builds from this catalog, never an arbitrary file on disk.
+Firmware developers use their own flash tools; only production-ready builds are submitted here.
+
+- **Data**: `FirmwareBuilds` (`DeviceType` = the `msv1`/`msv2`/`msv3` firmware family, `Kind`
+  Application/Bootloader, `Version`, `Status` Draft/Published/Withdrawn, file name, size, server-computed
+  SHA-256, `StorageKey`). Unique on (DeviceType, Kind, Version). Builds are immutable: a fix is a new
+  version, there is no replace. Only MS-V3 has `Bootloader` builds (it ships once and doesn't change).
+  There's no app/bootloader compatibility field: the bootloader can run any PIC32 app.
+- **Storage**: `IFirmwareStorage` / `LocalFirmwareStorage` (`Storage/`), `Firmware:StoragePath` (default
+  `firmware/`), same rules as release storage (outside the web root and the rsync-deployed dir).
+- **Staff**: `/Staff/Firmware` — upload a hex as a draft, Publish/Withdraw, delete never-published drafts.
+  Uploads are structurally validated as Intel HEX (record checksums, EOF record; `Firmware/IntelHex.cs`),
+  16 MiB cap.
+- **API** (`Manufacturer` role, account re-checked per call): `GET /api/manufacturing/firmware?deviceType=msv3`
+  lists Published builds (id, kind, version, notes, file name, size, sha256);
+  `GET /api/manufacturing/firmware/{id}/file` streams the hex (ETag = SHA-256). Quarry verifies the SHA-256,
+  flashes, then reports the build's `version` as `firmwareVersion`/`bootloaderVersion` on `confirm`/`/firmware`.
+  Integrity is TLS + SHA-256; no build signing.
+- **Not built**: the server doesn't yet tie `confirm`/`rekey`/`/firmware` to a catalog build id — the version
+  string is still whatever the station sends. Quarry-side caching for offline factories is Quarry's job.
 
 ## Releases & downloads
 

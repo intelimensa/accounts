@@ -161,7 +161,7 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
         public string SerialNumber { get; set; } = string.Empty;
 
         [Required, StringLength(100)]
-        [Display(Name = "Device type (e.g. ms2)")]
+        [Display(Name = "Device type (e.g. msv2)")]
         public string DeviceType { get; set; } = string.Empty;
 
         [Required]

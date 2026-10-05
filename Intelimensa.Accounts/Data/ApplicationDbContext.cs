@@ -29,6 +29,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<ReleaseArtifact> ReleaseArtifacts => Set<ReleaseArtifact>();
 
+    public DbSet<FirmwareBuild> FirmwareBuilds => Set<FirmwareBuild>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -141,6 +143,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany(r => r.Artifacts)
                 .HasForeignKey(a => a.ReleaseId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<FirmwareBuild>(entity =>
+        {
+            entity.HasIndex(b => new { b.DeviceType, b.Kind, b.Version }).IsUnique();
         });
     }
 }

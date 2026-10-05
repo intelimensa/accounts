@@ -28,6 +28,8 @@ builder.Services.AddRazorPages(options =>
 
 builder.Services.Configure<ReleaseStorageOptions>(builder.Configuration.GetSection("Releases"));
 builder.Services.AddSingleton<IReleaseStorage, LocalReleaseStorage>();
+builder.Services.Configure<FirmwareStorageOptions>(builder.Configuration.GetSection("Firmware"));
+builder.Services.AddSingleton<IFirmwareStorage, LocalFirmwareStorage>();
 
 builder.Services.AddOptions<ManufacturingOptions>()
     .Bind(builder.Configuration.GetSection("Manufacturing"))

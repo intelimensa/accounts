@@ -5,8 +5,8 @@ namespace Intelimensa.Accounts.Manufacturing;
 public class ManufacturingOptions
 {
     /// <summary>
-    /// Device type (the <c>Config.Key</c> vocabulary, e.g. "ms2") to the 4-character product code
-    /// used in serial numbers. A device type missing from this map can't be manufactured.
+    /// Device type (the firmware family: "msv1", "msv2", "msv3") to the 4-character product code
+    /// used in serial numbers (MSV1, MSV2, MSV3). It is unrelated to <c>Config.Key</c>. A device type missing from this map can't be manufactured.
     /// </summary>
     public Dictionary<string, string> ProductCodes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
