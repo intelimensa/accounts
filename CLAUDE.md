@@ -323,6 +323,16 @@ dotnet run --project Intelimensa.Accounts/Intelimensa.Accounts.csproj
 
 No test project exists yet.
 
+### Dev server
+
+`scripts/dev-server.sh start|stop|restart|status|logs` runs the real dev app: the real `accounts.db`, `releases/` and
+`firmware-files/`, the user-secrets JWT key, and the `http` launch profile's port (5295), read from
+`launchSettings.json`. `start` refuses while EF migrations are pending; `start --migrate` backs the database up first
+(`Intelimensa.Accounts/accounts.pre-migrate-<time>.db`, gitignored) and applies them. It clears any leaked
+`ConnectionStrings__*`/`*__StoragePath`/`Jwt__*` variables from the shell, and `stop` only ever stops a process that is
+verifiably this repo's app (by pidfile, or by the dev port if the pidfile was lost); anything else on the port is
+reported and left alone. It never deletes data.
+
 ### Test server
 
 For manual or scripted testing against a running app, use `scripts/test-server.sh start|stop|status|logs`
