@@ -323,6 +323,15 @@ dotnet run --project Intelimensa.Accounts/Intelimensa.Accounts.csproj
 
 No test project exists yet.
 
+### Test server
+
+For manual or scripted testing against a running app, use `scripts/test-server.sh start|stop|status|logs`
+instead of starting servers by hand. It builds, migrates a throwaway database, seeds `test@example.com` /
+`correct-horse-battery` (Staff + Manufacturer) and starts on a free port (from 5399), with its database, release
+storage and firmware storage all inside one temp directory (`$TMPDIR/intelimensa-accounts-test`) that `stop`
+deletes (only if it carries the script's marker file). It never touches `accounts.db`, `releases/` or
+`firmware-files/`. Never point a test server at the dev storage folders: uploads there are real dev data.
+
 ### EF Core
 
 `dotnet-ef` is a local tool (`.config/dotnet-tools.json`) — run `dotnet tool restore` once after
