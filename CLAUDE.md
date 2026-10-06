@@ -228,6 +228,18 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   stored as `BciDevice.BootloaderVersion` and in the event history; given replaces, omitted leaves it
   unchanged (never cleared; null for MS-V2). Like firmware it's applied at `confirm`/`/firmware`, only
   recorded as *intended* at `reserve`/`rekey`; an app update over USB omits it. `void` is refused if any participant is paired. Region has no server default.
+- **Manual provisioning page** (`/Manufacturing`, `Pages/Manufacturing/`): reserve (batch of up to 50), confirm, void and
+  rekey from the browser, for flashing units without Quarry. Gated by the `Manufacturer` role (policy
+  `ManufacturerPortal`, cookie auth; Staff can't use it) and re-checks the account is usable per request. It runs the
+  same `Manufacturing/UnitProvisioning` service as the API (reserve/confirm/void/rekey logic lives there; the
+  endpoints only map results to HTTP). Fresh registration codes are rendered once in the response (no-store, with
+  CSV download and print), never kept in TempData or the DB. Confirming by hand trusts the operator typed the
+  code read back from the unit; only Quarry reads it off the device itself.
+  **Reserve specific serials** takes serials typed in by hand (one per line, up to 100) for units whose serial is
+  already printed on a casing: `UnitProvisioning.ReserveSerialAsync` needs a valid serial (check character), a
+  configured product and region, and one never issued (voided included); the device type comes from the product
+  code. It's then an ordinary Reserved unit with a fresh code. Page-only, not in the API; each serial succeeds or
+  fails on its own. The allocator continues from the highest serial per product+region, so a hand-picked one never collides.
 - **JWTs now carry role claims** (`TokenService.CreateAccessToken(user, roles)`), baked in at
   login/refresh like cookie roles.
 - **Registration** (`POST /api/devices/register`): a *new* pairing needs the unit to be
@@ -243,23 +255,36 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
 Implemented server-side — Quarry flashes only builds from this catalog, never an arbitrary file on disk.
 Firmware developers use their own flash tools; only production-ready builds are submitted here.
 
+- **Versions are read from the file, never typed.** `Firmware/FirmwareImage.cs` (`Describe`) is a port of
+  Quarry's `FirmwareHex.Describe` plus the MS-V3 app-header check (firmware repo,
+  `quarry/.../Identity/FirmwareHex.cs`, `Update/AppImage.cs`); `Firmware/IntelHex.cs` is the matching reader. Checked
+  against all of the firmware repo's real hex files: it agrees with Quarry's reader. **If the image layout
+  or version format changes, change both copies.** An image is `Single` (MS-V1/V2: the one `MAJOR.HEIGHT+hash`
+  string found in flash), `MsV3Factory` (bootloader + app: app version from the CRC-checked header, bootloader
+  version from the bootloader flash range) or `MsV3App` (app only: the header).
 - **Data**: `FirmwareBuilds` (`DeviceType` = the `msv1`/`msv2`/`msv3` firmware family, `Kind`
-  Application/Bootloader, `Version`, `Status` Draft/Published/Withdrawn, file name, size, server-computed
-  SHA-256, `StorageKey`). Unique on (DeviceType, Kind, Version). Builds are immutable: a fix is a new
-  version, there is no replace. Only MS-V3 has `Bootloader` builds (it ships once and doesn't change).
-  There's no app/bootloader compatibility field: the bootloader can run any PIC32 app.
+  Application/Factory, `Version` = the app's, `BootloaderVersion` (Factory only), `Status` Draft/Published/Withdrawn,
+  file name, size, server-computed SHA-256, `StorageKey`). Unique on (DeviceType, Kind, Version). Builds are
+  immutable: a fix is a new version, there is no replace. **Application** = MS-V1/V2's whole firmware, or an MS-V3
+  app on its own (USB update). **Factory** = MS-V3 bootloader + app, what a programmer writes to a new unit. There is
+  no bootloader-only kind: a bootloader alone looks like any single image to the programmer (Quarry refuses it, see
+  `MindStoneQuarry-design.md` "Firmware version"). `FlashableByProgrammer` = Application for msv1/msv2, Factory for msv3.
+- **Upload rules** (`/Staff/Firmware`, device type + file, nothing else typed): the image must read cleanly
+  (HEX checksums, EOF record, MS-V3 header CRCs), carry exactly one version, and be a **release** version
+  (`MAJOR.HEIGHT+hash`: `.dirty` and `.testN` builds are refused, as Quarry would refuse them); msv3 takes only
+  MsV3Factory/MsV3App, msv1/msv2 only Single (a Factory needs a readable bootloader version too). **Caveat:** a
+  bootloader-only hex reads as a `Single` release image, so it passes for msv1/msv2 if someone picks that type.
+  16 MiB cap. Publish/Withdraw, delete never-published drafts.
 - **Storage**: `IFirmwareStorage` / `LocalFirmwareStorage` (`Storage/`), `Firmware:StoragePath` (default
-  `firmware/`), same rules as release storage (outside the web root and the rsync-deployed dir).
-- **Staff**: `/Staff/Firmware` — upload a hex as a draft, Publish/Withdraw, delete never-published drafts.
-  Uploads are structurally validated as Intel HEX (record checksums, EOF record; `Firmware/IntelHex.cs`),
-  16 MiB cap.
+  `firmware-files/`, gitignored; not `firmware/`, which collides with the `Firmware/` source folder on macOS/Windows),
+  same rules as release storage (outside the web root and the rsync-deployed dir).
 - **API** (`Manufacturer` role, account re-checked per call): `GET /api/manufacturing/firmware?deviceType=msv3`
-  lists Published builds (id, kind, version, notes, file name, size, sha256);
-  `GET /api/manufacturing/firmware/{id}/file` streams the hex (ETag = SHA-256). Quarry verifies the SHA-256,
-  flashes, then reports the build's `version` as `firmwareVersion`/`bootloaderVersion` on `confirm`/`/firmware`.
-  Integrity is TLS + SHA-256; no build signing.
-- **Not built**: the server doesn't yet tie `confirm`/`rekey`/`/firmware` to a catalog build id — the version
-  string is still whatever the station sends. Quarry-side caching for offline factories is Quarry's job.
+  lists Published builds (id, kind, version, bootloaderVersion, notes, file name, size, sha256);
+  `GET /api/manufacturing/firmware/{id}/file` streams the hex (ETag = SHA-256). Integrity is TLS + SHA-256; no build
+  signing. The `/Manufacturing` page only offers (and the server only accepts) published, programmer-flashable builds
+  for the unit's device type, and records the build's version (and bootloader version) on the unit.
+- **Not built**: the API's `confirm`/`rekey`/`/firmware` still take free-text version strings, not a catalog build id.
+  Quarry-side caching for offline factories is Quarry's job.
 
 ## Releases & downloads
 

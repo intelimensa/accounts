@@ -7,8 +7,9 @@
 
 <h1 class="h3 mb-3">Firmware</h1>
 <p class="text-muted">
-    Production-ready hex builds the manufacturing station can flash. Only <strong>Published</strong>
-    builds are listed to the station. Builds are immutable: ship a fix as a new version.
+    Production-ready hex builds the manufacturing station can flash. The kind and the version(s) are
+    <strong>read from the file</strong>, not typed. Only <strong>Published</strong> builds are listed to the
+    station. Builds are immutable: ship a fix as a new version.
 </p>
 
 @if (Model.StatusMessage is not null)
@@ -22,8 +23,9 @@
 
 <div class="feature-card mb-4">
     <h2 class="h5 mb-3">Upload a build</h2>
+    <div asp-validation-summary="All" class="text-danger small mb-2"></div>
     <form method="post" asp-page-handler="Upload" enctype="multipart/form-data" class="row g-2 align-items-end">
-        <div class="col-sm-2">
+        <div class="col-sm-3">
             <label asp-for="Input.DeviceType" class="form-label">Device type</label>
             <select asp-for="Input.DeviceType" class="form-select">
                 @foreach (var type in Model.DeviceTypes)
@@ -32,24 +34,13 @@
                 }
             </select>
         </div>
-        <div class="col-sm-2">
-            <label asp-for="Input.Kind" class="form-label"></label>
-            <select asp-for="Input.Kind" class="form-select">
-                <option value="@FirmwareKind.Application">Application</option>
-                <option value="@FirmwareKind.Bootloader">Bootloader (MS-V3)</option>
-            </select>
-        </div>
-        <div class="col-sm-2">
-            <label asp-for="Input.Version" class="form-label"></label>
-            <input asp-for="Input.Version" class="form-control" />
-            <span asp-validation-for="Input.Version" class="text-danger"></span>
-        </div>
-        <div class="col-sm-3">
+        <div class="col-sm-5">
             <label asp-for="Input.File" class="form-label">Hex file</label>
             <input asp-for="Input.File" type="file" accept=".hex" class="form-control" required />
+            <div class="form-text">MS-V3: the factory image (bootloader + app) for new units, or the app's own hex for USB updates.</div>
         </div>
-        <div class="col-sm-3">
-            <button type="submit" class="btn btn-ia-primary w-100">Upload Draft</button>
+        <div class="col-sm-4">
+            <button type="submit" class="btn btn-ia-primary w-100">Read and Upload Draft</button>
         </div>
         <div class="col-12">
             <label asp-for="Input.Notes" class="form-label"></label>
@@ -67,14 +58,14 @@ else
     <div class="feature-card">
         <table class="table table-sm align-middle mb-0">
             <thead>
-                <tr><th>Type</th><th>Kind</th><th>Version</th><th>Status</th><th>File</th><th></th></tr>
+                <tr><th>Type</th><th>Kind</th><th>Version</th><th>Bootloader</th><th>Status</th><th>File</th><th></th></tr>
             </thead>
             <tbody>
             @foreach (var build in Model.Builds)
             {
                 <tr>
                     <td>@build.DeviceType.ToUpperInvariant()</td>
-                    <td>@build.Kind</td>
+                    <td>@(build.Kind == FirmwareKind.Factory ? "Factory (bootloader + app)" : build.DeviceType == "msv3" ? "App only (USB update)" : "Application")</td>
                     <td>
                         @build.Version
                         @if (build.Notes is not null)
@@ -82,6 +73,7 @@ else
                             <div class="text-muted small">@build.Notes</div>
                         }
                     </td>
+                    <td>@(build.BootloaderVersion ?? "-")</td>
                     <td><span class="badge text-bg-secondary">@build.Status</span></td>
                     <td class="small">
                         @build.FileName &middot; @(build.SizeBytes / 1024) KB

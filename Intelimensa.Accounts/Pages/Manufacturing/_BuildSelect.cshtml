@@ -1,0 +1,13 @@
+@model Intelimensa.Accounts.Pages.Manufacturing.BuildSelectModel
+@* A dropdown of published firmware builds. data-type lets the reserve form filter by device type. *@
+<label class="form-label" for="@Model.Id">@Model.Label</label>
+<select id="@Model.Id" name="firmwareBuildId" class="form-select" data-build-select required>
+    @if (!Model.Builds.Any())
+    {
+        <option value="" data-type="">No published builds</option>
+    }
+    @foreach (var build in Model.Builds)
+    {
+        <option value="@build.Id" data-type="@build.DeviceType">@build.Label</option>
+    }
+</select>

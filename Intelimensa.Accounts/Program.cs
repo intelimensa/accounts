@@ -23,6 +23,7 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AuthorizeFolder("/Staff", "Staff");
+    options.Conventions.AuthorizeFolder("/Manufacturing", "ManufacturerPortal");
     options.Conventions.AuthorizePage("/Download");
 });
 
@@ -31,6 +32,7 @@ builder.Services.AddSingleton<IReleaseStorage, LocalReleaseStorage>();
 builder.Services.Configure<FirmwareStorageOptions>(builder.Configuration.GetSection("Firmware"));
 builder.Services.AddSingleton<IFirmwareStorage, LocalFirmwareStorage>();
 
+builder.Services.AddScoped<UnitProvisioning>();
 builder.Services.AddOptions<ManufacturingOptions>()
     .Bind(builder.Configuration.GetSection("Manufacturing"))
     .ValidateOnStart();
@@ -102,6 +104,10 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Staff", policy => policy.RequireRole("Staff"));
+
+    // The /Manufacturing web pages (cookie). Same role as the API policy below, just the cookie
+    // scheme instead of the JWT one; still separate from Staff.
+    options.AddPolicy("ManufacturerPortal", policy => policy.RequireRole("Manufacturer"));
 
     // Manufacturing-station API (JWT, not the cookie). Deliberately separate from Staff: a
     // Manufacturer can mint device identities but sees nothing else, and Staff can't mint them.

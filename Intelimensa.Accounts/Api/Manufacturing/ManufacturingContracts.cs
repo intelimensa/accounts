@@ -54,15 +54,19 @@ public record ManufacturingOptionsResponse(
     List<string> RekeyReasons);
 
 /// <summary>
-/// One flashable build in the firmware catalog. <c>Version</c> is what the station reports back as
-/// <c>firmwareVersion</c> (or <c>bootloaderVersion</c> for <c>Kind == Bootloader</c>); <c>Sha256</c>
-/// is lowercase hex of the file the download returns.
+/// One flashable build in the firmware catalog, with versions read from the image itself.
+/// <c>Kind</c> is <c>Application</c> (MS-V1/MS-V2's whole firmware, or an MS-V3 app on its own for a
+/// USB update) or <c>Factory</c> (an MS-V3 bootloader + app image for a programmer). <c>Version</c> is
+/// what the station reports as <c>firmwareVersion</c>; <c>BootloaderVersion</c> (factory images only)
+/// is what it reports as <c>bootloaderVersion</c>. <c>Sha256</c> is lowercase hex of the file the
+/// download returns.
 /// </summary>
 public record FirmwareBuildResponse(
     int Id,
     string DeviceType,
     string Kind,
     string Version,
+    string? BootloaderVersion,
     string? Notes,
     string FileName,
     long SizeBytes,

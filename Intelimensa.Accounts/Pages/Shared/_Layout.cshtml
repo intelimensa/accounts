@@ -30,6 +30,12 @@
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Privacy">Privacy</a>
                         </li>
+                        @if (User.IsInRole("Manufacturer"))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" asp-page="/Manufacturing/Index">Manufacturing</a>
+                            </li>
+                        }
                         @if (User.IsInRole("Staff"))
                         {
                             <li class="nav-item">

@@ -43,6 +43,15 @@
   }
 }
 
+/* Bootstrap tables take their text from --bs-emphasis-color (black) and paint --bs-body-bg over
+   whatever they sit on. The portal themes through --ia-* variables rather than data-bs-theme, so
+   without this the cells are black on the dark card. Heading colour is near-white in dark mode. */
+.table {
+  --bs-table-color: var(--ia-heading);
+  --bs-table-bg: transparent;
+  --bs-table-border-color: var(--ia-border);
+}
+
 body {
   background-color: var(--ia-bg);
   color: var(--ia-body);

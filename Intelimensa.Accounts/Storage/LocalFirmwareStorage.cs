@@ -6,8 +6,11 @@ namespace Intelimensa.Accounts.Storage;
 
 public class FirmwareStorageOptions
 {
-    /// <summary>Root directory for firmware files. Relative paths resolve against the content root.</summary>
-    public string StoragePath { get; set; } = "firmware";
+    /// <summary>
+    /// Root directory for firmware files. Relative paths resolve against the content root. Not
+    /// "firmware": on a case-insensitive filesystem that is the <c>Firmware/</c> source folder.
+    /// </summary>
+    public string StoragePath { get; set; } = "firmware-files";
 }
 
 /// <summary>

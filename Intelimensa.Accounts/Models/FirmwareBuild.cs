@@ -4,7 +4,8 @@ namespace Intelimensa.Accounts.Models;
 /// One production-ready firmware image (an Intel HEX file) that the manufacturing station can
 /// flash. Quarry lists the Published builds for the product it's working on and downloads the
 /// chosen one, instead of flashing an arbitrary file from disk. The hex itself lives in
-/// <c>IFirmwareStorage</c>; this row is the metadata and the publish state.
+/// <c>IFirmwareStorage</c>; this row is the metadata and the publish state. The versions are read
+/// from the file at upload (<c>FirmwareImage.Describe</c>), never typed.
 /// </summary>
 public class FirmwareBuild
 {
@@ -15,8 +16,11 @@ public class FirmwareBuild
 
     public FirmwareKind Kind { get; set; }
 
-    /// <summary>The same string Quarry reports as <c>firmwareVersion</c>/<c>bootloaderVersion</c>. Unique per device type and kind.</summary>
+    /// <summary>The app's version, as read from the image: what Quarry reports as <c>firmwareVersion</c>. Unique per device type and kind.</summary>
     public required string Version { get; set; }
+
+    /// <summary>The bootloader's version, read from a <see cref="FirmwareKind.Factory"/> image (what Quarry reports as <c>bootloaderVersion</c>); null otherwise.</summary>
+    public string? BootloaderVersion { get; set; }
 
     public string? Notes { get; set; }
 
@@ -32,6 +36,9 @@ public class FirmwareBuild
     /// <summary>Opaque key understood by <c>IFirmwareStorage</c> -- not a filesystem path.</summary>
     public required string StorageKey { get; set; }
 
+    /// <summary>What a programmer can write to a new or reworked unit: the whole firmware for MS-V1/MS-V2, the factory image for MS-V3.</summary>
+    public bool FlashableByProgrammer => DeviceType == "msv3" ? Kind == FirmwareKind.Factory : Kind == FirmwareKind.Application;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>Set when the build first goes <see cref="FirmwareBuildStatus.Published"/>.</summary>
@@ -40,11 +47,17 @@ public class FirmwareBuild
 
 public enum FirmwareKind
 {
-    /// <summary>The application image. For MS-V1/MS-V2 this is the whole firmware.</summary>
+    /// <summary>
+    /// An application image on its own. For MS-V1/MS-V2 that is the whole firmware, written with a
+    /// programmer; for MS-V3 it's the app-only image an update over USB sends.
+    /// </summary>
     Application,
 
-    /// <summary>The MS-V3 bootloader image. Written once at manufacturing.</summary>
-    Bootloader,
+    /// <summary>
+    /// An MS-V3 factory image: bootloader plus app, what a programmer writes to a new unit. A
+    /// bootloader on its own isn't a catalog item: it looks like any single image to the programmer.
+    /// </summary>
+    Factory,
 }
 
 public enum FirmwareBuildStatus

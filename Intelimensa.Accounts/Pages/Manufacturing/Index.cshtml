@@ -1,0 +1,249 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.IndexModel
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.Pages.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing";
+}
+
+<h1 class="h3 mb-3">Manufacturing</h1>
+<p class="text-muted">
+    Reserve serials and registration codes, then flash each unit and confirm it with the code read
+    back from the unit. A unit can only be registered by a participant once it is
+    <strong>Manufactured</strong>.
+</p>
+
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+@if (Model.Failures.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>Not reserved:</strong>
+        <ul class="mb-0">
+            @foreach (var failure in Model.Failures)
+            {
+                <li><span class="font-monospace">@failure.Serial</span>: @failure.Reason</li>
+            }
+        </ul>
+    </div>
+}
+
+@if (Model.Issued.Count > 0)
+{
+    <div class="feature-card mb-4 border-warning">
+        <h2 class="h5">@Model.IssuedHeading</h2>
+        <p class="text-danger small mb-2">
+            These registration codes are shown <strong>once</strong>. They can't be recovered later; a lost
+            code means a rekey. Download or print them now.
+        </p>
+        <table class="table table-sm align-middle" id="issued-table">
+            <thead><tr><th>Serial</th><th>Registration code</th><th>Type</th></tr></thead>
+            <tbody>
+            @foreach (var row in Model.Issued)
+            {
+                <tr>
+                    <td class="font-monospace">@row.SerialLabel</td>
+                    <td class="font-monospace">@row.CodeLabel</td>
+                    <td>@row.DeviceType.ToUpperInvariant()</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <button type="button" class="btn btn-ia-outline btn-sm" id="download-csv">Download CSV</button>
+        <button type="button" class="btn btn-ia-outline btn-sm" onclick="window.print()">Print</button>
+    </div>
+}
+
+<div class="feature-card mb-4">
+    <h2 class="h5 mb-3">Reserve units</h2>
+    <form method="post" asp-page-handler="Reserve" class="row g-2 align-items-end">
+        <div class="col-sm-2">
+            <label class="form-label" for="r-type">Device type</label>
+            <select id="r-type" name="deviceType" class="form-select">
+                @foreach (var type in Model.DeviceTypes)
+                {
+                    <option value="@type">@type.ToUpperInvariant()</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label" for="r-region">Region</label>
+            <select id="r-region" name="region" class="form-select">
+                @foreach (var region in Model.Regions)
+                {
+                    <option value="@region">@region</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <partial name="_BuildSelect" model='new BuildSelectModel("r-fw", "Firmware build", Model.Builds)' />
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label" for="r-count">Count</label>
+            <input id="r-count" name="count" type="number" min="1" max="50" value="1" class="form-control" required />
+        </div>
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-ia-primary w-100">Reserve</button>
+        </div>
+    </form>
+</div>
+
+<div class="feature-card mb-4">
+    <h2 class="h5 mb-1">Reserve specific serials</h2>
+    <p class="text-muted small">
+        For serials that already exist outside the server (e.g. printed on casings): they're held as
+        Reserved, each with a new registration code, until the unit is flashed and confirmed. The serial
+        must be valid (its last character is a check character), use a configured product and region, and
+        not have been issued before. One per line; dashes are optional.
+    </p>
+    <form method="post" asp-page-handler="ReserveSerials" class="row g-2 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label" for="s-serials">Serials</label>
+            <textarea id="s-serials" name="serials" class="form-control font-monospace" rows="5" required></textarea>
+        </div>
+        <div class="col-md-3">
+            <partial name="_BuildSelect" model='new BuildSelectModel("s-fw", "Firmware build", Model.Builds)' />
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-ia-primary w-100">Reserve serials</button>
+        </div>
+    </form>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-6">
+        <div class="feature-card h-100">
+            <h2 class="h5 mb-3">Confirm a flashed unit</h2>
+            <form method="post" asp-page-handler="Confirm" class="row g-2">
+                <div class="col-sm-6">
+                    <label class="form-label" for="c-serial">Serial</label>
+                    <input id="c-serial" name="serialNumber" class="form-control font-monospace" required />
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label" for="c-code">Code read back from the unit</label>
+                    <input id="c-code" name="registrationCode" class="form-control font-monospace" required autocomplete="off" />
+                </div>
+                <div class="col-sm-6">
+                    <partial name="_BuildSelect" model='new BuildSelectModel("c-fw", "Firmware build", Model.Builds)' />
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-ia-primary">Confirm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="feature-card h-100">
+            <h2 class="h5 mb-1">Rekey a unit</h2>
+            <p class="text-muted small">
+                Issues a new registration code for the same serial. The old code stops working at once and
+                the unit goes back to Reserved until it is re-flashed and confirmed. Participants already
+                paired are unaffected.
+            </p>
+            <form method="post" asp-page-handler="Rekey" class="row g-2">
+                <div class="col-sm-6">
+                    <label class="form-label" for="k-serial">Serial</label>
+                    <input id="k-serial" name="serialNumber" class="form-control font-monospace" required />
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label" for="k-reason">Reason</label>
+                    <select id="k-reason" name="reason" class="form-select">
+                        @foreach (var reason in Model.RekeyReasons)
+                        {
+                            <option value="@reason">@reason</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-sm-6">
+                    <partial name="_BuildSelect" model='new BuildSelectModel("k-fw", "Intended firmware build", Model.Builds)' />
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="k-note">Note <span class="text-muted">(opt.)</span></label>
+                    <input id="k-note" name="note" class="form-control" maxlength="500" />
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-ia-outline">Rekey</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="feature-card">
+    <h2 class="h5 mb-3">Units</h2>
+    @if (!Model.Units.Any())
+    {
+        <p class="text-muted mb-0">No units reserved yet.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr><th>Serial</th><th>Type</th><th>Status</th><th>Firmware</th><th>Bootloader</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var unit in Model.Units)
+            {
+                <tr>
+                    <td class="font-monospace">@unit.SerialLabel</td>
+                    <td>@unit.DeviceType.ToUpperInvariant()</td>
+                    <td><span class="badge text-bg-secondary">@unit.Status</span></td>
+                    <td>@unit.FirmwareVersion</td>
+                    <td>@(unit.BootloaderVersion ?? "-")</td>
+                    <td class="text-end">
+                        @if (unit.Status == BciDeviceStatus.Reserved)
+                        {
+                            <form method="post" asp-page-handler="Void" class="d-inline">
+                                <input type="hidden" name="serialNumber" value="@unit.SerialLabel" />
+                                <button type="submit" class="btn btn-link btn-sm text-danger">Void</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        // The reserve form knows its device type up front, so only offer that product's builds.
+        const typeSelect = document.getElementById('r-type');
+        if (typeSelect) {
+            const filter = () => {
+                for (const select of typeSelect.form.querySelectorAll('select[data-build-select]')) {
+                    let firstVisible = null, selectedHidden = false;
+                    for (const option of select.options) {
+                        const show = option.dataset.type === '' || option.dataset.type === typeSelect.value;
+                        option.hidden = !show;
+                        option.disabled = !show;
+                        if (show && !firstVisible && option.value !== '') firstVisible = option;
+                        if (!show && option.selected) selectedHidden = true;
+                    }
+                    if (selectedHidden) select.value = select.dataset.optional === '1' ? '' : (firstVisible?.value ?? '');
+                }
+            };
+            typeSelect.addEventListener('change', filter);
+            filter();
+        }
+
+        document.getElementById('download-csv')?.addEventListener('click', () => {
+            const rows = [...document.querySelectorAll('#issued-table tr')]
+                .map(tr => [...tr.children].map(c => '"' + c.textContent.trim().replace(/"/g, '""') + '"').join(','));
+            const blob = new Blob([rows.join('\r\n') + '\r\n'], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'registration-codes.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        });
+    </script>
+}

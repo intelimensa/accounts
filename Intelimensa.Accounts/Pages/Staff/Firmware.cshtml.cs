@@ -14,7 +14,7 @@ namespace Intelimensa.Accounts.Pages.Staff;
 
 /// <summary>
 /// The catalog of production firmware the manufacturing station can flash. Staff upload a hex as a
-/// draft, then publish it; only Published builds are listed to (and downloadable by) Quarry.
+/// draft (its kind and versions are read from the file), then publish it; only Published builds are listed to (and downloadable by) Quarry.
 /// </summary>
 [RequestSizeLimit(MaxHexBytes)]
 [RequestFormLimits(MultipartBodyLengthLimit = MaxHexBytes)]
@@ -23,9 +23,6 @@ public partial class FirmwareModel(
 {
     // A PIC32 hex is a few MB at most; the cap also bounds the buffered structural check.
     private const long MaxHexBytes = 16L * 1024 * 1024;
-
-    [GeneratedRegex(@"^[0-9A-Za-z][0-9A-Za-z._+-]{0,49}$")]
-    private static partial Regex VersionPattern();
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]*$")]
     private static partial Regex FileNamePattern();
@@ -47,18 +44,11 @@ public partial class FirmwareModel(
     public async Task<IActionResult> OnPostUploadAsync(CancellationToken ct)
     {
         var deviceType = Input.DeviceType?.Trim().ToLowerInvariant() ?? string.Empty;
-        var version = Input.Version?.Trim() ?? string.Empty;
 
         if (!ModelState.IsValid)
             return await FailAsync(null);
         if (!manufacturing.Value.ProductCodes.ContainsKey(deviceType))
             return await FailAsync("Unknown device type.");
-        if (!Enum.IsDefined(Input.Kind))
-            return await FailAsync("Unknown kind.");
-        if (Input.Kind == FirmwareKind.Bootloader && deviceType != "msv3")
-            return await FailAsync("Only MS-V3 has a separate bootloader image.");
-        if (!VersionPattern().IsMatch(version))
-            return await FailAsync("Version may only contain letters, digits, '.', '_', '+' and '-' (max 50).");
         if (Input.File is null || Input.File.Length == 0)
             return await FailAsync("Choose a hex file to upload.");
 
@@ -67,25 +57,39 @@ public partial class FirmwareModel(
         if (!FileNamePattern().IsMatch(fileName) || fileName.Length > 200 || fileName.Contains(".."))
             return await FailAsync("File name may only contain letters, digits, '.', '_' and '-'.");
 
-        if (await db.FirmwareBuilds.AnyAsync(b => b.DeviceType == deviceType && b.Kind == Input.Kind && b.Version == version, ct))
-            return await FailAsync($"{deviceType.ToUpperInvariant()} {Input.Kind} {version} already exists. Use a new version.");
+        // Read what the file is -- never typed: the kind and versions come from the image itself, so
+        // the catalog can't disagree with what a unit would actually be flashed with.
+        FirmwareDescription image;
+        try
+        {
+            using var reader = new StreamReader(Input.File.OpenReadStream(), System.Text.Encoding.ASCII);
+            image = FirmwareImage.Describe(await reader.ReadToEndAsync(ct));
+        }
+        catch (FirmwareImageException ex)
+        {
+            return await FailAsync(ex.Message);
+        }
+
+        if (ImageError(deviceType, image) is { } imageError)
+            return await FailAsync(imageError);
+
+        var kind = image.Kind == FirmwareImageKind.MsV3Factory ? FirmwareKind.Factory : FirmwareKind.Application;
+        var version = image.Version!;
+
+        if (await db.FirmwareBuilds.AnyAsync(b => b.DeviceType == deviceType && b.Kind == kind && b.Version == version, ct))
+            return await FailAsync($"{deviceType.ToUpperInvariant()} {kind} {version} is already in the catalog. A changed build has a new version.");
 
         // Builds are immutable once uploaded (a different file is a new version), which is why
         // there's no replace: what a unit was flashed with must stay reconstructible.
-        await using (var content = Input.File.OpenReadStream())
-        {
-            if (IntelHex.Validate(content) is { } hexError)
-                return await FailAsync($"Not a valid Intel HEX file. {hexError}");
-        }
-
         await using var stream = Input.File.OpenReadStream();
-        var stored = await storage.SaveAsync(deviceType, Input.Kind, version, fileName, stream, ct);
+        var stored = await storage.SaveAsync(deviceType, kind, version, fileName, stream, ct);
 
         db.FirmwareBuilds.Add(new FirmwareBuild
         {
             DeviceType = deviceType,
-            Kind = Input.Kind,
+            Kind = kind,
             Version = version,
+            BootloaderVersion = image.BootloaderVersion,
             Notes = string.IsNullOrWhiteSpace(Input.Notes) ? null : Input.Notes.Trim(),
             FileName = fileName,
             SizeBytes = stored.SizeBytes,
@@ -94,9 +98,43 @@ public partial class FirmwareModel(
         });
         await db.SaveChangesAsync(ct);
 
-        StatusMessage = $"Uploaded {deviceType.ToUpperInvariant()} {Input.Kind} {version} as a draft.";
+        StatusMessage = $"Read {Describe(kind, version, image.BootloaderVersion)} for {deviceType.ToUpperInvariant()} from {fileName}; added as a draft.";
         return RedirectToPage();
     }
+
+    /// <summary>Whether the detected image belongs in the catalog for this product. Null if fine, else why not.</summary>
+    private static string? ImageError(string deviceType, FirmwareDescription image)
+    {
+        if (image.Version is null)
+            return "No firmware version found in the image (or it holds several different ones).";
+        if (!FirmwareImage.IsRelease(image.Version))
+            return $"{image.Version} isn't a release build (built from an unclean tree, or a test build). Only clean builds can be added.";
+
+        if (deviceType == "msv3")
+        {
+            if (image.Kind == FirmwareImageKind.Single)
+                return "This is a single image, not an MS-V3 one. MS-V3 takes a factory image (bootloader + app) or an app-only image.";
+            if (image.Kind == FirmwareImageKind.MsV3Factory)
+            {
+                if (image.BootloaderVersion is null)
+                    return "The factory image's bootloader has no version string (or several different ones).";
+                if (!FirmwareImage.IsRelease(image.BootloaderVersion))
+                    return $"The bootloader version {image.BootloaderVersion} isn't a release build.";
+            }
+        }
+        else if (image.Kind != FirmwareImageKind.Single)
+        {
+            var what = image.Kind == FirmwareImageKind.MsV3Factory ? "factory" : "app";
+            return $"This is an MS-V3 {what} image, but the device type is {deviceType.ToUpperInvariant()}.";
+        }
+
+        return null;
+    }
+
+    public static string Describe(FirmwareKind kind, string version, string? bootloaderVersion) =>
+        kind == FirmwareKind.Factory && bootloaderVersion is not null
+            ? $"factory image: app {version}, bootloader {bootloaderVersion}"
+            : $"{kind.ToString().ToLowerInvariant()} {version}";
 
     public async Task<IActionResult> OnPostSetStatusAsync(int buildId, FirmwareBuildStatus status)
     {
@@ -154,11 +192,6 @@ public partial class FirmwareModel(
     {
         [Required]
         public string? DeviceType { get; set; }
-
-        public FirmwareKind Kind { get; set; }
-
-        [Required, StringLength(50)]
-        public string? Version { get; set; }
 
         [StringLength(4000)]
         public string? Notes { get; set; }

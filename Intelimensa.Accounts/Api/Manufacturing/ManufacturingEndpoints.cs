@@ -23,9 +23,6 @@ namespace Intelimensa.Accounts.Api.Manufacturing;
 /// </summary>
 public static class ManufacturingEndpoints
 {
-    private const int MaxSerialAttempts = 5;
-    private const int MaxNoteLength = 500;
-
     public static IEndpointRouteBuilder MapManufacturingEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/manufacturing")
@@ -66,9 +63,10 @@ public static class ManufacturingEndpoints
     private static async Task<IResult> ListFirmwareAsync(
         string? deviceType,
         ClaimsPrincipal user,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        UnitProvisioning provisioning)
     {
-        if (await RequireUsableAccountAsync(user, db) is null)
+        if (await provisioning.GetUsableUserIdAsync(user) is null)
             return Results.Unauthorized();
 
         var type = deviceType?.Trim().ToLowerInvariant();
@@ -81,7 +79,7 @@ public static class ManufacturingEndpoints
         return Results.Ok(builds
             .OrderBy(b => b.DeviceType).ThenBy(b => b.Kind).ThenByDescending(b => b.PublishedAt)
             .Select(b => new FirmwareBuildResponse(
-                b.Id, b.DeviceType, b.Kind.ToString(), b.Version, b.Notes,
+                b.Id, b.DeviceType, b.Kind.ToString(), b.Version, b.BootloaderVersion, b.Notes,
                 b.FileName, b.SizeBytes, b.Sha256, b.PublishedAt!.Value))
             .ToList());
     }
@@ -91,9 +89,10 @@ public static class ManufacturingEndpoints
         ClaimsPrincipal user,
         HttpResponse response,
         ApplicationDbContext db,
+        UnitProvisioning provisioning,
         IFirmwareStorage storage)
     {
-        if (await RequireUsableAccountAsync(user, db) is null)
+        if (await provisioning.GetUsableUserIdAsync(user) is null)
             return Results.Unauthorized();
 
         var build = await db.FirmwareBuilds.FindAsync(id);
@@ -109,254 +108,83 @@ public static class ManufacturingEndpoints
         ReserveUnitRequest request,
         ClaimsPrincipal user,
         HttpResponse response,
-        ApplicationDbContext db,
-        IOptions<ManufacturingOptions> options,
-        ILogger<ManufacturingOptions> logger)
+        UnitProvisioning provisioning)
     {
-        if (await RequireUsableAccountAsync(user, db) is not { } userId)
+        if (await provisioning.GetUsableUserIdAsync(user) is not { } userId)
             return Results.Unauthorized();
 
-        var deviceType = request.DeviceType?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (!options.Value.ProductCodes.TryGetValue(deviceType, out var productCode))
-            return Results.BadRequest($"Unknown device type '{request.DeviceType}'.");
+        var result = await provisioning.ReserveAsync(
+            userId, request.DeviceType, request.Region, request.FirmwareVersion, request.BootloaderVersion);
+        if (!result.IsOk)
+            return ToError(result);
 
-        var region = request.Region?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (region.Length == 0)
-            return Results.BadRequest(
-                $"Region is required. Allowed: {string.Join(", ", options.Value.RegionCodes.Keys.Order())}.");
-        if (!options.Value.RegionCodes.ContainsKey(region))
-            return Results.BadRequest(
-                $"Unknown region '{request.Region}'. Allowed: {string.Join(", ", options.Value.RegionCodes.Keys.Order())}.");
-
-        if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
-            return firmwareError;
-        var firmware = request.FirmwareVersion.Trim();
-        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
-            return bootloaderError;
-        var bootloader = NormalizeBootloader(request.BootloaderVersion);
-
-        var product = productCode.ToUpperInvariant();
-        var prefix = product + region + SerialNumber.FormatVersion;
-        var code = RegistrationCode.Generate();
-        var now = DateTimeOffset.UtcNow;
-
-        // Next sequence for this product+region = highest issued (voided serials included, so a
-        // serial is never reused) plus a random small step, or the configured start for the first
-        // unit. The random step keeps serials from revealing exactly how many units exist. The
-        // unique index on SerialNumber makes a concurrent reserve collide instead of duplicate;
-        // retry picks up the new maximum.
-        for (var attempt = 0; attempt < MaxSerialAttempts; attempt++)
-        {
-            var existing = await db.BciDevices
-                .Where(d => d.SerialNumber.StartsWith(prefix))
-                .Select(d => d.SerialNumber)
-                .ToListAsync();
-
-            var highest = existing
-                .Select(ser => SerialNumber.TryParse(ser, out var p, out var seq) && p == prefix ? seq : -1)
-                .DefaultIfEmpty(-1)
-                .Max();
-            var next = highest < 0
-                ? options.Value.SequenceStart
-                : highest + RandomNumberGenerator.GetInt32(1, options.Value.MaxSequenceStep + 1);
-            if (next > SerialNumber.MaxSequence)
-                return Results.Problem("Serial number space exhausted for this product/region.", statusCode: 409);
-
-            var serial = SerialNumber.Format(product, region[0], next);
-            var unit = new BciDevice
-            {
-                SerialNumber = serial,
-                DeviceType = deviceType,
-                ProducedAt = DateOnly.FromDateTime(now.UtcDateTime),
-                CurrentFirmwareVersion = firmware,
-                Status = BciDeviceStatus.Reserved,
-                RegistrationCodeHash = RegistrationCode.Hash(code),
-                ReservedAt = now,
-                ReservedByUserId = userId,
-            };
-            db.BciDevices.Add(unit);
-            db.BciDeviceEvents.Add(new BciDeviceEvent
-            {
-                BciDevice = unit,
-                Type = BciDeviceEventType.Reserved,
-                OccurredAt = now,
-                UserId = userId,
-                FirmwareVersionAfter = firmware,
-                BootloaderVersionAfter = bootloader, // intended; applied to the unit at confirm
-            });
-
-            try
-            {
-                await db.SaveChangesAsync();
-            }
-            catch (DbUpdateException)
-            {
-                foreach (var entry in db.ChangeTracker.Entries().ToList())
-                    entry.State = EntityState.Detached;
-                continue;
-            }
-
-            logger.LogInformation("Unit {Serial} reserved by {UserId}", serial, userId);
-            NoStore(response);
-            return Results.Created($"/api/manufacturing/units/{serial}", Issued(unit, code));
-        }
-
-        return Results.Problem("Could not allocate a serial number; try again.", statusCode: 503);
+        NoStore(response);
+        var issued = result.Value!;
+        return Results.Created($"/api/manufacturing/units/{issued.Unit.SerialNumber}", Issued(issued.Unit, issued.Code));
     }
 
     private static async Task<IResult> ConfirmAsync(
         ConfirmUnitRequest request,
         ClaimsPrincipal user,
-        ApplicationDbContext db,
-        ILogger<ManufacturingOptions> logger)
+        UnitProvisioning provisioning)
     {
-        if (await RequireUsableAccountAsync(user, db) is not { } userId)
+        if (await provisioning.GetUsableUserIdAsync(user) is not { } userId)
             return Results.Unauthorized();
 
-        var unit = await FindAsync(db, request.SerialNumber);
-        if (unit is null)
-            return Results.NotFound("Unknown serial number.");
-        if (unit.Status == BciDeviceStatus.Voided)
-            return Results.Conflict("This unit's reservation was voided.");
-
-        // The station submits the code it read back from the unit, so a match proves the flashed
-        // unit really carries the code the server issued.
-        if (!RegistrationCode.Verify(request.RegistrationCode, unit.RegistrationCodeHash))
-            return Results.BadRequest("Registration code does not match this unit.");
-
-        if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
-            return firmwareError;
-        var firmware = request.FirmwareVersion.Trim();
-        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
-            return bootloaderError;
-
-        // Idempotent: a retried confirm for an already-manufactured unit just reports success.
-        if (unit.Status == BciDeviceStatus.Reserved)
-        {
-            var now = DateTimeOffset.UtcNow;
-            var before = unit.CurrentFirmwareVersion;
-            var bootloaderBefore = unit.BootloaderVersion;
-
-            // ManufacturedAt/ProducedAt record the *first* confirmation; a reworked unit keeps them.
-            if (unit.ManufacturedAt is null)
-            {
-                unit.ManufacturedAt = now;
-                unit.ProducedAt = DateOnly.FromDateTime(now.UtcDateTime);
-            }
-
-            unit.Status = BciDeviceStatus.Manufactured;
-            ApplyFirmware(unit, firmware, now);
-            ApplyBootloader(unit, NormalizeBootloader(request.BootloaderVersion));
-            AddEvent(db, unit, BciDeviceEventType.Confirmed, userId, now, before: before, after: firmware,
-                bootloaderBefore: bootloaderBefore, bootloaderAfter: unit.BootloaderVersion);
-
-            await db.SaveChangesAsync();
-            logger.LogInformation("Unit {Serial} confirmed manufactured by {UserId}", unit.SerialNumber, userId);
-        }
-
-        return Results.Ok(ToResponse(unit));
+        var result = await provisioning.ConfirmAsync(
+            userId, request.SerialNumber, request.RegistrationCode, request.FirmwareVersion, request.BootloaderVersion);
+        return result.IsOk ? Results.Ok(ToResponse(result.Value!)) : ToError(result);
     }
 
     private static async Task<IResult> VoidAsync(
         UnitRequest request,
         ClaimsPrincipal user,
-        ApplicationDbContext db,
-        ILogger<ManufacturingOptions> logger)
+        UnitProvisioning provisioning)
     {
-        if (await RequireUsableAccountAsync(user, db) is not { } userId)
+        if (await provisioning.GetUsableUserIdAsync(user) is not { } userId)
             return Results.Unauthorized();
 
-        var unit = await FindAsync(db, request.SerialNumber);
-        if (unit is null)
-            return Results.NotFound("Unknown serial number.");
-        if (unit.Status == BciDeviceStatus.Manufactured)
-            return Results.Conflict("A manufactured unit can't be voided; use rekey to re-flash it.");
-
-        if (unit.Status == BciDeviceStatus.Reserved)
-        {
-            // A reworked unit awaiting re-confirmation may still have participants paired to it;
-            // voiding would strand them.
-            if (await db.AccountDevices.AnyAsync(ad => ad.BciDeviceId == unit.Id))
-                return Results.Conflict("This unit has participants paired to it and can't be voided; re-flash and confirm it instead.");
-
-            unit.Status = BciDeviceStatus.Voided;
-            unit.RegistrationCodeHash = null;
-            AddEvent(db, unit, BciDeviceEventType.Voided, userId, DateTimeOffset.UtcNow);
-            await db.SaveChangesAsync();
-            logger.LogInformation("Unit {Serial} voided by {UserId}", unit.SerialNumber, userId);
-        }
-
-        return Results.Ok(ToResponse(unit));
+        var result = await provisioning.VoidAsync(userId, request.SerialNumber);
+        return result.IsOk ? Results.Ok(ToResponse(result.Value!)) : ToError(result);
     }
 
     private static async Task<IResult> RekeyAsync(
         RekeyUnitRequest request,
         ClaimsPrincipal user,
         HttpResponse response,
-        ApplicationDbContext db,
-        ILogger<ManufacturingOptions> logger)
+        UnitProvisioning provisioning)
     {
-        if (await RequireUsableAccountAsync(user, db) is not { } userId)
+        if (await provisioning.GetUsableUserIdAsync(user) is not { } userId)
             return Results.Unauthorized();
 
-        // Parsed by hand (not bound as an enum) so an unknown value gets a clear 400 rather than a
-        // JSON binding failure, and numeric strings aren't accepted.
-        var reasonName = Enum.GetNames<RekeyReason>()
-            .FirstOrDefault(n => n.Equals(request.Reason?.Trim(), StringComparison.OrdinalIgnoreCase));
-        if (reasonName is null)
-            return Results.BadRequest($"Reason is required: {string.Join(", ", Enum.GetNames<RekeyReason>())}.");
-        var reason = Enum.Parse<RekeyReason>(reasonName);
-        if (ValidateNote(request.Note) is { } noteError)
-            return noteError;
-        if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
-            return firmwareError;
-        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
-            return bootloaderError;
+        var result = await provisioning.RekeyAsync(
+            userId, request.SerialNumber, request.Reason, request.Note, request.FirmwareVersion, request.BootloaderVersion);
+        if (!result.IsOk)
+            return ToError(result);
 
-        var unit = await FindAsync(db, request.SerialNumber);
-        if (unit is null)
-            return Results.NotFound("Unknown serial number.");
-        if (unit.Status == BciDeviceStatus.Voided)
-            return Results.Conflict("This unit's reservation was voided.");
-
-        // The old code stops working immediately and the unit isn't registerable to new
-        // participants until it's re-flashed and confirmed. Existing account pairings are
-        // unaffected. The firmware version is recorded as *intended* only: it's applied to the unit
-        // at confirm, so a failed rework can't leave the record claiming a write that never happened.
-        var now = DateTimeOffset.UtcNow;
-        var code = RegistrationCode.Generate();
-        unit.RegistrationCodeHash = RegistrationCode.Hash(code);
-        unit.Status = BciDeviceStatus.Reserved;
-        unit.ReservedAt = now;
-        unit.ReservedByUserId = userId;
-        AddEvent(db, unit, BciDeviceEventType.Rekeyed, userId, now,
-            reason: reason, note: request.Note?.Trim(),
-            before: unit.CurrentFirmwareVersion, after: request.FirmwareVersion.Trim(),
-            bootloaderBefore: unit.BootloaderVersion, bootloaderAfter: NormalizeBootloader(request.BootloaderVersion));
-        await db.SaveChangesAsync();
-
-        logger.LogInformation("Unit {Serial} re-keyed ({Reason}) by {UserId}", unit.SerialNumber, reason, userId);
         NoStore(response);
-        return Results.Ok(Issued(unit, code));
+        var issued = result.Value!;
+        return Results.Ok(Issued(issued.Unit, issued.Code));
     }
 
     private static async Task<IResult> FirmwareAsync(
         FirmwareWriteRequest request,
         ClaimsPrincipal user,
         ApplicationDbContext db,
+        UnitProvisioning provisioning,
         ILogger<ManufacturingOptions> logger)
     {
-        if (await RequireUsableAccountAsync(user, db) is not { } userId)
+        if (await provisioning.GetUsableUserIdAsync(user) is not { } userId)
             return Results.Unauthorized();
 
-        if (ValidateNote(request.Note) is { } noteError)
-            return noteError;
-        if (ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
-            return firmwareError;
-        if (ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
-            return bootloaderError;
+        if (UnitProvisioning.ValidateNote(request.Note) is { } noteError)
+            return Results.BadRequest(noteError);
+        if (UnitProvisioning.ValidateFirmware(request.FirmwareVersion) is { } firmwareError)
+            return Results.BadRequest(firmwareError);
+        if (UnitProvisioning.ValidateBootloader(request.BootloaderVersion) is { } bootloaderError)
+            return Results.BadRequest(bootloaderError);
 
-        var unit = await FindAsync(db, request.SerialNumber);
+        var unit = await db.BciDevices.FindBySerialAsync(request.SerialNumber);
         if (unit is null)
             return Results.NotFound("Unknown serial number.");
         if (unit.Status != BciDeviceStatus.Manufactured)
@@ -368,11 +196,11 @@ public static class ManufacturingEndpoints
         var before = unit.CurrentFirmwareVersion;
         var bootloaderBefore = unit.BootloaderVersion;
         var firmware = request.FirmwareVersion.Trim();
-        ApplyFirmware(unit, firmware, now);
+        UnitProvisioning.ApplyFirmware(unit, firmware, now);
         // An app update over USB doesn't touch the bootloader, so a client leaves this out. It's sent
         // after a programmer flash restored the same identity, which rewrites the bootloader too.
-        ApplyBootloader(unit, NormalizeBootloader(request.BootloaderVersion));
-        AddEvent(db, unit, BciDeviceEventType.FirmwareWritten, userId, now,
+        UnitProvisioning.ApplyBootloader(unit, UnitProvisioning.NormalizeBootloader(request.BootloaderVersion));
+        UnitProvisioning.AddEvent(db, unit, BciDeviceEventType.FirmwareWritten, userId, now,
             note: request.Note?.Trim(), before: before, after: firmware,
             bootloaderBefore: bootloaderBefore, bootloaderAfter: unit.BootloaderVersion);
         await db.SaveChangesAsync();
@@ -382,93 +210,13 @@ public static class ManufacturingEndpoints
         return Results.Ok(ToResponse(unit));
     }
 
-    /// <summary>
-    /// The firmware-write rule: the timestamp always moves; the recorded version only changes when
-    /// it actually differs.
-    /// </summary>
-    private static void ApplyFirmware(BciDevice unit, string version, DateTimeOffset now)
+    private static IResult ToError<T>(ProvisionResult<T> result) => result.Status switch
     {
-        if (unit.CurrentFirmwareVersion != version)
-            unit.CurrentFirmwareVersion = version;
-        unit.LastFirmwareUpdatedAt = now;
-    }
-
-    /// <summary>
-    /// The bootloader rule: a version that's given replaces the recorded one; one that's omitted
-    /// leaves it unchanged (so an app update over USB, which never touches the bootloader, can't
-    /// erase it). There's no way to clear it: no flow reflashes a bootloader-less image onto a unit
-    /// that had one.
-    /// </summary>
-    private static void ApplyBootloader(BciDevice unit, string? version)
-    {
-        if (version is not null && unit.BootloaderVersion != version)
-            unit.BootloaderVersion = version;
-    }
-
-    private static string? NormalizeBootloader(string? version) =>
-        string.IsNullOrWhiteSpace(version) ? null : version.Trim();
-
-    private static IResult? ValidateBootloader(string? version) =>
-        version?.Trim() is { Length: > 50 }
-            ? Results.BadRequest("BootloaderVersion is too long (max 50 characters).")
-            : null;
-
-    private static void AddEvent(
-        ApplicationDbContext db,
-        BciDevice unit,
-        BciDeviceEventType type,
-        string userId,
-        DateTimeOffset now,
-        RekeyReason? reason = null,
-        string? note = null,
-        string? before = null,
-        string? after = null,
-        string? bootloaderBefore = null,
-        string? bootloaderAfter = null) =>
-        db.BciDeviceEvents.Add(new BciDeviceEvent
-        {
-            BciDeviceId = unit.Id,
-            Type = type,
-            OccurredAt = now,
-            UserId = userId,
-            Reason = reason,
-            Note = string.IsNullOrWhiteSpace(note) ? null : note,
-            FirmwareVersionBefore = before,
-            FirmwareVersionAfter = after,
-            BootloaderVersionBefore = bootloaderBefore,
-            BootloaderVersionAfter = bootloaderAfter,
-        });
-
-    private static IResult? ValidateFirmware(string? firmwareVersion)
-    {
-        var firmware = firmwareVersion?.Trim() ?? string.Empty;
-        return firmware.Length is 0 or > 50
-            ? Results.BadRequest("FirmwareVersion is required (max 50 characters).")
-            : null;
-    }
-
-    private static IResult? ValidateNote(string? note) =>
-        note is { Length: > MaxNoteLength }
-            ? Results.BadRequest($"Note is too long (max {MaxNoteLength} characters).")
-            : null;
-
-    /// <summary>
-    /// Returns the caller's user id if their account is still usable. Re-checked on every call
-    /// (not just at login) so revoking a station's account takes effect immediately rather than
-    /// when its access token expires.
-    /// </summary>
-    private static async Task<string?> RequireUsableAccountAsync(ClaimsPrincipal user, ApplicationDbContext db)
-    {
-        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (userId is null)
-            return null;
-
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.UserId == userId);
-        return AccountPolicy.IsUsable(account) ? userId : null;
-    }
-
-    private static Task<BciDevice?> FindAsync(ApplicationDbContext db, string? serialNumber) =>
-        db.BciDevices.FindBySerialAsync(serialNumber);
+        ProvisionStatus.NotFound => Results.NotFound(result.Message),
+        ProvisionStatus.Conflict => Results.Conflict(result.Message),
+        ProvisionStatus.Unavailable => Results.Problem(result.Message, statusCode: 503),
+        _ => Results.BadRequest(result.Message),
+    };
 
     private static IssuedUnitResponse Issued(BciDevice unit, string code) => new(
         unit.SerialNumber,
