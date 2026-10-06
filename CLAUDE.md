@@ -235,11 +235,15 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   endpoints only map results to HTTP). Fresh registration codes are rendered once in the response (no-store, with
   CSV download and print), never kept in TempData or the DB. Confirming by hand trusts the operator typed the
   code read back from the unit; only Quarry reads it off the device itself.
-  **Reserve specific serials** takes serials typed in by hand (one per line, up to 100) for units whose serial is
-  already printed on a casing: `UnitProvisioning.ReserveSerialAsync` needs a valid serial (check character), a
-  configured product and region, and one never issued (voided included); the device type comes from the product
-  code. It's then an ordinary Reserved unit with a fresh code. Page-only, not in the API; each serial succeeds or
-  fails on its own. The allocator continues from the highest serial per product+region, so a hand-picked one never collides.
+  **Hold serials** takes serials typed in by hand (one per line, up to 200) for units whose serial is already printed
+  on a casing: `UnitProvisioning.HoldSerialAsync` reserves *only the serial* so the allocator can never issue it to
+  another unit. The unit is `Reserved` with **no registration code and no firmware/bootloader version**
+  (`BciDevice.IsHeld`; `CurrentFirmwareVersion` is nullable for this). It can't be confirmed (the message says to rekey)
+  or registered by a participant. Flash time: **rekey** it, which issues its first code (the server records the reason
+  as `RekeyReason.Initial` for a held serial whatever was sent, and refuses `Initial` for any other unit), then flash and
+  confirm. A valid serial (check character), a configured product and region, and never issued (voided included) are
+  required. Page-only, not in the API; each serial succeeds or fails on its own. The allocator continues from the
+  highest serial per product+region, so a hand-picked one never collides.
 - **JWTs now carry role claims** (`TokenService.CreateAccessToken(user, roles)`), baked in at
   login/refresh like cookie roles.
 - **Registration** (`POST /api/devices/register`): a *new* pairing needs the unit to be

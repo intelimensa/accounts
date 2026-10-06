@@ -177,7 +177,7 @@ public class DevicesModel(ApplicationDbContext db) : PageModel
         string SerialNumber,
         string DeviceType,
         DateOnly ProducedAt,
-        string CurrentFirmwareVersion,
+        string? CurrentFirmwareVersion,
         DateTimeOffset? LastFirmwareUpdatedAt,
         int RegistrationCount,
         BciDeviceStatus Status,

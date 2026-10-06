@@ -23,6 +23,9 @@ public enum RekeyReason
 
     /// <summary>Hardware rework or a board swap.</summary>
     Rework = 3,
+
+    /// <summary>The first code for a held serial (reserved with no code), issued when the unit is flashed. Only valid for a held serial, and used automatically for it.</summary>
+    Initial = 4,
 }
 
 /// <summary>

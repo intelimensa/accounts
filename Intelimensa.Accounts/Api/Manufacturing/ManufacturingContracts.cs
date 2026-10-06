@@ -39,7 +39,7 @@ public record UnitResponse(
     string SerialNumberLabel,
     string DeviceType,
     BciDeviceStatus Status,
-    string FirmwareVersion,
+    string? FirmwareVersion,
     string? BootloaderVersion,
     DateTimeOffset? ManufacturedAt,
     DateTimeOffset? FirmwareUpdatedAt);

@@ -20,14 +20,14 @@ public class IndexModel(
     ApplicationDbContext db, UnitProvisioning provisioning, IOptions<ManufacturingOptions> options) : PageModel
 {
     private const int MaxBatch = 50;
-    private const int MaxSerialBatch = 100;
+    private const int MaxSerialBatch = 200;
     private const int MaxListed = 200;
 
     public List<string> DeviceTypes { get; private set; } = [];
 
     public List<string> Regions { get; private set; } = [];
 
-    public List<string> RekeyReasons { get; } = Enum.GetNames<RekeyReason>().ToList();
+    public List<string> RekeyReasons { get; } = Enum.GetNames<RekeyReason>().Where(n => n != nameof(RekeyReason.Initial)).ToList();
 
     public List<UnitRow> Units { get; private set; } = [];
 
@@ -43,7 +43,10 @@ public class IndexModel(
 
     public string? IssuedHeading { get; private set; }
 
-    /// <summary>Serials from a by-serial reserve that couldn't be reserved, with the reason.</summary>
+    /// <summary>Serials held by this request (no codes: nothing secret here, unlike <see cref="Issued"/>).</summary>
+    public List<string> Held { get; } = [];
+
+    /// <summary>Serials from a hold request that couldn't be held, with the reason.</summary>
     public List<SerialFailure> Failures { get; private set; } = [];
 
     [TempData]
@@ -83,8 +86,12 @@ public class IndexModel(
         return await ShowCodesAsync();
     }
 
-    public async Task<IActionResult> OnPostReserveSerialsAsync(
-        string? serials, int firmwareBuildId)
+    /// <summary>
+    /// Holds serials that already exist outside the server (e.g. printed on casings): only the serial is
+    /// reserved, with no code and no firmware, so it can't be issued to another unit. The first code
+    /// comes from a rekey when the unit is flashed.
+    /// </summary>
+    public async Task<IActionResult> OnPostHoldSerialsAsync(string? serials)
     {
         if (await provisioning.GetUsableUserIdAsync(User) is not { } userId)
             return Forbid();
@@ -104,29 +111,15 @@ public class IndexModel(
         // Each serial stands alone: one bad serial doesn't stop the others.
         foreach (var token in tokens)
         {
-            // The device type comes from the serial's product code, so the build is checked against that.
-            // An unknown serial or product is left for the service to report.
-            FirmwareBuild? build = null;
-            if (provisioning.DeviceTypeForSerial(token) is { } serialType)
-            {
-                string? buildError;
-                (build, buildError) = await ResolveBuildAsync(serialType, firmwareBuildId);
-                if (build is null)
-                {
-                    Failures.Add(new SerialFailure(SerialNumber.ToDisplay(token), buildError!));
-                    continue;
-                }
-            }
-
-            var result = await provisioning.ReserveSerialAsync(userId, token, build?.Version, build?.BootloaderVersion);
+            var result = await provisioning.HoldSerialAsync(userId, token);
             if (result.IsOk)
-                Issued.Add(ToRow(result.Value!));
+                Held.Add(SerialNumber.ToDisplay(result.Value!.SerialNumber));
             else
                 Failures.Add(new SerialFailure(SerialNumber.ToDisplay(token), result.Message ?? "Failed."));
         }
 
-        IssuedHeading = $"Reserved {Issued.Count} of {tokens.Count} serial(s)";
-        return await ShowCodesAsync();
+        await LoadAsync();
+        return Page();
     }
 
     public async Task<IActionResult> OnPostConfirmAsync(
@@ -239,7 +232,7 @@ public class IndexModel(
             .Take(MaxListed)
             .Select(d => new UnitRow(
                 SerialNumber.ToDisplay(d.SerialNumber), d.DeviceType, d.Status,
-                d.CurrentFirmwareVersion, d.BootloaderVersion, d.ReservedAt!.Value))
+                d.CurrentFirmwareVersion, d.BootloaderVersion, d.ReservedAt!.Value, d.IsHeld))
             .ToList();
     }
 
@@ -250,7 +243,7 @@ public class IndexModel(
 
     public record UnitRow(
         string SerialLabel, string DeviceType, BciDeviceStatus Status,
-        string FirmwareVersion, string? BootloaderVersion, DateTimeOffset ReservedAt);
+        string? FirmwareVersion, string? BootloaderVersion, DateTimeOffset ReservedAt, bool Held);
 
     public record BuildOption(int Id, string DeviceType, string Label);
 

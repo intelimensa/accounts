@@ -54,7 +54,8 @@ public static class ManufacturingEndpoints
                 .OrderBy(r => r.Key)
                 .Select(r => new RegionOption(r.Key.ToUpperInvariant(), r.Value))
                 .ToList(),
-            Enum.GetNames<RekeyReason>().ToList()));
+            // Initial is the server's own choice for a held serial, never one a station picks.
+            Enum.GetNames<RekeyReason>().Where(n => n != nameof(RekeyReason.Initial)).ToList()));
 
     /// <summary>
     /// The catalog the station picks from. Only Published builds; <c>deviceType</c> is optional and

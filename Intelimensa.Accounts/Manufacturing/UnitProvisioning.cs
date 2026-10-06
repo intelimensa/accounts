@@ -146,51 +146,41 @@ public class UnitProvisioning(
     }
 
     /// <summary>
-    /// Reserves a serial the caller already has (e.g. one printed on a casing before the unit is
-    /// ready to flash) instead of allocating the next one. The serial must be well-formed (its
-    /// check character catches typos), name a configured product and region, and never have been
-    /// issued -- voided serials included, as with allocation. The device type comes from the
-    /// serial's product code. Everything after that is the normal lifecycle: it's Reserved, gets a
-    /// fresh registration code (returned once), and is confirmed after flashing. The allocator
-    /// continues from the highest serial per product+region, so a high hand-picked serial moves
-    /// later automatic ones above it, never into a collision.
+    /// Holds a serial the caller already has (e.g. one printed on a casing before the unit is ready to
+    /// flash) so the allocator can never issue it to another unit. Only the serial is reserved: no
+    /// registration code and no firmware or bootloader version. The unit is <see cref="BciDeviceStatus.Reserved"/>
+    /// and <see cref="BciDevice.IsHeld"/>; it can't be confirmed or registered until
+    /// <see cref="RekeyAsync"/> gives it its first code at flash time. The serial must be well-formed
+    /// (its check character catches typos), name a configured product and region, and never have been
+    /// issued -- voided serials included, as with allocation. The device type comes from the serial's
+    /// product code. The allocator continues from the highest serial per product+region, so a high
+    /// hand-picked serial moves later automatic ones above it, never into a collision.
     /// </summary>
-    public async Task<ProvisionResult<IssuedUnit>> ReserveSerialAsync(
-        string userId, string? serialInput, string? firmwareVersion, string? bootloaderVersion)
+    public async Task<ProvisionResult<BciDevice>> HoldSerialAsync(string userId, string? serialInput)
     {
         if (!SerialNumber.TryNormalize(serialInput, out var serial))
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest,
+            return Fail<BciDevice>(ProvisionStatus.BadRequest,
                 "Not a valid serial (check the characters; the last one is a check character).");
 
         var product = serial[..4];
         if (DeviceTypeForSerial(serial) is not { } deviceType)
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest, $"Unknown product code '{product}'.");
+            return Fail<BciDevice>(ProvisionStatus.BadRequest, $"Unknown product code '{product}'.");
 
         var region = serial[4].ToString();
         if (!options.Value.RegionCodes.ContainsKey(region))
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest,
+            return Fail<BciDevice>(ProvisionStatus.BadRequest,
                 $"Unknown region '{region}'. Allowed: {string.Join(", ", options.Value.RegionCodes.Keys.Order())}.");
 
-        if (ValidateFirmware(firmwareVersion) is { } firmwareError)
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest, firmwareError);
-        var firmware = firmwareVersion!.Trim();
-        if (ValidateBootloader(bootloaderVersion) is { } bootloaderError)
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest, bootloaderError);
-        var bootloader = NormalizeBootloader(bootloaderVersion);
-
         if (await db.BciDevices.AnyAsync(d => d.SerialNumber == serial))
-            return Fail<IssuedUnit>(ProvisionStatus.Conflict, "This serial has already been issued.");
+            return Fail<BciDevice>(ProvisionStatus.Conflict, "This serial has already been issued.");
 
-        var code = RegistrationCode.Generate();
         var now = DateTimeOffset.UtcNow;
         var unit = new BciDevice
         {
             SerialNumber = serial,
             DeviceType = deviceType,
             ProducedAt = DateOnly.FromDateTime(now.UtcDateTime),
-            CurrentFirmwareVersion = firmware,
             Status = BciDeviceStatus.Reserved,
-            RegistrationCodeHash = RegistrationCode.Hash(code),
             ReservedAt = now,
             ReservedByUserId = userId,
         };
@@ -201,8 +191,7 @@ public class UnitProvisioning(
             Type = BciDeviceEventType.Reserved,
             OccurredAt = now,
             UserId = userId,
-            FirmwareVersionAfter = firmware,
-            BootloaderVersionAfter = bootloader, // intended; applied to the unit at confirm
+            Note = "Serial held; no registration code issued.",
         });
 
         try
@@ -214,11 +203,11 @@ public class UnitProvisioning(
             // Lost a race for the same serial (unique index); detach so the context stays usable.
             foreach (var entry in db.ChangeTracker.Entries().ToList())
                 entry.State = EntityState.Detached;
-            return Fail<IssuedUnit>(ProvisionStatus.Conflict, "This serial has already been issued.");
+            return Fail<BciDevice>(ProvisionStatus.Conflict, "This serial has already been issued.");
         }
 
-        logger.LogInformation("Unit {Serial} reserved by serial by {UserId}", serial, userId);
-        return new(ProvisionStatus.Ok, new IssuedUnit(unit, code));
+        logger.LogInformation("Serial {Serial} held by {UserId}", serial, userId);
+        return new(ProvisionStatus.Ok, unit);
     }
 
     /// <summary>The configured device type whose product code a canonical serial starts with, or null.</summary>
@@ -239,6 +228,10 @@ public class UnitProvisioning(
             return Fail<BciDevice>(ProvisionStatus.NotFound, "Unknown serial number.");
         if (unit.Status == BciDeviceStatus.Voided)
             return Fail<BciDevice>(ProvisionStatus.Conflict, "This unit's reservation was voided.");
+
+        if (unit.IsHeld)
+            return Fail<BciDevice>(ProvisionStatus.Conflict,
+                "This serial is held and has no registration code yet. Rekey it to issue one, flash the unit, then confirm.");
 
         // The station submits the code it read back from the unit, so a match proves the flashed
         // unit really carries the code the server issued.
@@ -308,13 +301,10 @@ public class UnitProvisioning(
         string userId, string? serialNumber, string? reasonInput, string? note, string? firmwareVersion, string? bootloaderVersion)
     {
         // Parsed by hand (not bound as an enum) so an unknown value gets a clear 400 rather than a
-        // JSON binding failure, and numeric strings aren't accepted.
+        // JSON binding failure, and numeric strings aren't accepted. What's required of it depends on
+        // the unit (a held serial's first code is always Initial), so it's judged after the lookup.
         var reasonName = Enum.GetNames<RekeyReason>()
             .FirstOrDefault(n => n.Equals(reasonInput?.Trim(), StringComparison.OrdinalIgnoreCase));
-        if (reasonName is null)
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest,
-                $"Reason is required: {string.Join(", ", Enum.GetNames<RekeyReason>())}.");
-        var reason = Enum.Parse<RekeyReason>(reasonName);
         if (ValidateNote(note) is { } noteError)
             return Fail<IssuedUnit>(ProvisionStatus.BadRequest, noteError);
         if (ValidateFirmware(firmwareVersion) is { } firmwareError)
@@ -327,6 +317,21 @@ public class UnitProvisioning(
             return Fail<IssuedUnit>(ProvisionStatus.NotFound, "Unknown serial number.");
         if (unit.Status == BciDeviceStatus.Voided)
             return Fail<IssuedUnit>(ProvisionStatus.Conflict, "This unit's reservation was voided.");
+
+        // A held serial has no code to rotate: this issues its first, whatever reason was sent. Any
+        // other unit needs a real reason, and Initial is not one.
+        RekeyReason reason;
+        if (unit.IsHeld)
+        {
+            reason = RekeyReason.Initial;
+        }
+        else
+        {
+            var selectable = Enum.GetNames<RekeyReason>().Where(n => n != nameof(RekeyReason.Initial)).ToList();
+            if (reasonName is null || reasonName == nameof(RekeyReason.Initial))
+                return Fail<IssuedUnit>(ProvisionStatus.BadRequest, $"Reason is required: {string.Join(", ", selectable)}.");
+            reason = Enum.Parse<RekeyReason>(reasonName);
+        }
 
         // The old code stops working immediately and the unit isn't registerable to new
         // participants until it's re-flashed and confirmed. Existing account pairings are

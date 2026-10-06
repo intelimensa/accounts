@@ -27,7 +27,11 @@ public class BciDevice
 
     public DateOnly ProducedAt { get; set; }
 
-    public required string CurrentFirmwareVersion { get; set; }
+    /// <summary>
+    /// The firmware version last recorded for the unit. Null only for a held serial (reserved with no
+    /// code and no firmware yet), until its first confirm.
+    /// </summary>
+    public string? CurrentFirmwareVersion { get; set; }
 
     public DateTimeOffset? LastFirmwareUpdatedAt { get; set; }
 
@@ -47,9 +51,16 @@ public class BciDevice
     /// <summary>
     /// Base64 SHA-256 of the normalized registration code (see <c>RegistrationCode</c>); the
     /// plaintext is only ever returned once, to the manufacturing station. Null for legacy and
-    /// backfilled units, which therefore can't be registered while code checking is on.
+    /// backfilled units, which therefore can't be registered while code checking is on, and for a
+    /// <em>held</em> serial (Reserved, never given a code: see <see cref="IsHeld"/>).
     /// </summary>
     public string? RegistrationCodeHash { get; set; }
+
+    /// <summary>
+    /// A serial set aside so it can't be issued to another unit, with no registration code yet (it gets
+    /// its first one by rekey when the unit is flashed). Reserved and codeless.
+    /// </summary>
+    public bool IsHeld => Status == BciDeviceStatus.Reserved && RegistrationCodeHash is null;
 
     public DateTimeOffset? ReservedAt { get; set; }
 

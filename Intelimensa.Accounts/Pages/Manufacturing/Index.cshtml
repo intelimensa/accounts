@@ -22,10 +22,18 @@
     <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
 }
 
+@if (Model.Held.Count > 0)
+{
+    <div class="alert alert-success" role="alert">
+        <strong>Held @Model.Held.Count serial(s):</strong>
+        <span class="font-monospace">@string.Join(", ", Model.Held)</span>
+    </div>
+}
+
 @if (Model.Failures.Count > 0)
 {
     <div class="alert alert-danger" role="alert">
-        <strong>Not reserved:</strong>
+        <strong>Not held:</strong>
         <ul class="mb-0">
             @foreach (var failure in Model.Failures)
             {
@@ -96,23 +104,21 @@
 </div>
 
 <div class="feature-card mb-4">
-    <h2 class="h5 mb-1">Reserve specific serials</h2>
+    <h2 class="h5 mb-1">Hold serials</h2>
     <p class="text-muted small">
-        For serials that already exist outside the server (e.g. printed on casings): they're held as
-        Reserved, each with a new registration code, until the unit is flashed and confirmed. The serial
-        must be valid (its last character is a check character), use a configured product and region, and
-        not have been issued before. One per line; dashes are optional.
+        For serials that already exist outside the server (e.g. printed on casings). Only the serial is
+        reserved, so it can never be issued to another unit: <strong>no registration code and no firmware
+        yet</strong>. When you flash the unit, <strong>rekey</strong> it to get its first code, then
+        confirm. A serial must be valid (its last character is a check character), use a configured
+        product and region, and not have been issued before. One per line; dashes are optional.
     </p>
-    <form method="post" asp-page-handler="ReserveSerials" class="row g-2 align-items-end">
-        <div class="col-md-5">
+    <form method="post" asp-page-handler="HoldSerials" class="row g-2 align-items-end">
+        <div class="col-md-8">
             <label class="form-label" for="s-serials">Serials</label>
             <textarea id="s-serials" name="serials" class="form-control font-monospace" rows="5" required></textarea>
         </div>
-        <div class="col-md-3">
-            <partial name="_BuildSelect" model='new BuildSelectModel("s-fw", "Firmware build", Model.Builds)' />
-        </div>
-        <div class="col-md-2">
-            <button type="submit" class="btn btn-ia-primary w-100">Reserve serials</button>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-ia-primary w-100">Hold serials</button>
         </div>
     </form>
 </div>
@@ -145,7 +151,8 @@
             <p class="text-muted small">
                 Issues a new registration code for the same serial. The old code stops working at once and
                 the unit goes back to Reserved until it is re-flashed and confirmed. Participants already
-                paired are unaffected.
+                paired are unaffected. For a <strong>held</strong> serial this issues its first code (the
+                reason is recorded as Initial whatever you pick).
             </p>
             <form method="post" asp-page-handler="Rekey" class="row g-2">
                 <div class="col-sm-6">
@@ -194,8 +201,8 @@
                 <tr>
                     <td class="font-monospace">@unit.SerialLabel</td>
                     <td>@unit.DeviceType.ToUpperInvariant()</td>
-                    <td><span class="badge text-bg-secondary">@unit.Status</span></td>
-                    <td>@unit.FirmwareVersion</td>
+                    <td><span class="badge text-bg-secondary">@(unit.Held ? "Held (no code)" : unit.Status.ToString())</span></td>
+                    <td>@(unit.FirmwareVersion ?? "-")</td>
                     <td>@(unit.BootloaderVersion ?? "-")</td>
                     <td class="text-end">
                         @if (unit.Status == BciDeviceStatus.Reserved)
