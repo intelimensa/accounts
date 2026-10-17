@@ -14,7 +14,7 @@ public class Account
 
     public ApplicationUser? User { get; set; }
 
-    public AccountStatus Status { get; set; } = AccountStatus.Active;
+    public AccountStatus Status { get; set; } = AccountStatus.Pending;
 
     public DateTimeOffset? ExpiresAt { get; set; }
 

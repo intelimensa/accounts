@@ -24,6 +24,7 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AuthorizeFolder("/Account");
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
+    options.Conventions.AuthorizeFolder("/Admin", "Administrator");
     options.Conventions.AuthorizeFolder("/Staff", "Staff");
     options.Conventions.AuthorizeFolder("/Manufacturing", "ManufacturerPortal");
     options.Conventions.AuthorizePage("/Download");
@@ -90,6 +91,8 @@ builder.Services.AddAuthentication(options =>
     {
         options.LoginPath = "/Account/Login";
         options.AccessDeniedPath = "/Account/AccessDenied";
+        // Without this a revoked role would live on in the cookie until it expires.
+        options.Events.OnValidatePrincipal = SecurityStampCheck.ValidateAsync;
     })
     .AddJwtBearer(options =>
     {
@@ -107,6 +110,10 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization(options =>
 {
+    // Grants and revokes the other roles (/Admin). Deliberately not implied by Staff, and not
+    // grantable from the UI: only scripts/setrole.sh adds an Administrator.
+    options.AddPolicy("Administrator", policy => policy.RequireRole("Administrator"));
+
     options.AddPolicy("Staff", policy => policy.RequireRole("Staff"));
 
     // The /Manufacturing web pages (cookie). Same role as the API policy below, just the cookie
@@ -134,12 +141,12 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// Idempotent: ensures the "Staff" and "Manufacturer" roles exist even on a fresh DB. Granting
-// them to a specific user is a manual bootstrap step (see CLAUDE.md) -- there's no UI for it yet.
+// Idempotent: ensures the roles exist even on a fresh DB. Administrator is granted by hand
+// (scripts/setrole.sh); an Administrator grants the others at /Admin/Roles.
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var role in new[] { "Staff", "Manufacturer", "Publisher" })
+    foreach (var role in new[] { "Administrator", "Staff", "Manufacturer", "Publisher" })
         if (!await roleManager.RoleExistsAsync(role))
             await roleManager.CreateAsync(new IdentityRole(role));
 }

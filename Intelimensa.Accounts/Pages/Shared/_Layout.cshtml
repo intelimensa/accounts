@@ -36,6 +36,12 @@
                                 <a class="nav-link" asp-page="/Manufacturing/Index">Manufacturing</a>
                             </li>
                         }
+                        @if (User.IsInRole("Administrator"))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" asp-page="/Admin/Roles">Admin</a>
+                            </li>
+                        }
                         @if (User.IsInRole("Staff"))
                         {
                             <li class="nav-item">

@@ -12,6 +12,13 @@
     <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
 }
 
+@if (Model.Accounts.Any(a => a.Status == AccountStatus.Pending))
+{
+    <div class="alert alert-warning" role="alert">
+        @Model.Accounts.Count(a => a.Status == AccountStatus.Pending) account(s) awaiting approval (listed first).
+    </div>
+}
+
 @if (!Model.Accounts.Any())
 {
     <p class="text-muted">No accounts yet.</p>
@@ -45,7 +52,11 @@
                 <strong>@account.RegisteredDeviceCount</strong>
             </div>
             <div>
-                <button type="submit" class="btn btn-ia-primary btn-sm">Save</button>
+                @if (account.Status == AccountStatus.Pending)
+                {
+                    <button type="submit" asp-page-handler="Approve" class="btn btn-ia-primary btn-sm">Approve</button>
+                }
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Save</button>
             </div>
         </form>
     }

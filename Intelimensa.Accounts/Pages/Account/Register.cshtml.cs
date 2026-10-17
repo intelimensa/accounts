@@ -42,7 +42,7 @@ public class RegisterModel(
         db.Accounts.Add(new AccountEntity
         {
             UserId = user.Id,
-            Status = AccountStatus.Active,
+            Status = AccountStatus.Pending, // staff approve before it is usable
         });
         await db.SaveChangesAsync();
 

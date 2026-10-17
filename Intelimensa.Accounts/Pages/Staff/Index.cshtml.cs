@@ -37,11 +37,29 @@ public class IndexModel(ApplicationDbContext db) : PageModel
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostApproveAsync(int accountId, string? expiresAtDate)
+    {
+        var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId);
+        if (account is { Status: AccountStatus.Pending })
+        {
+            account.Status = AccountStatus.Active;
+            account.ExpiresAt = string.IsNullOrWhiteSpace(expiresAtDate)
+                ? null
+                : new DateTimeOffset(DateOnly.Parse(expiresAtDate).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+            await db.SaveChangesAsync();
+            StatusMessage = "Account approved.";
+        }
+
+        return RedirectToPage();
+    }
+
     private async Task LoadAsync()
     {
         Accounts = await db.Accounts
             .Include(a => a.User)
-            .OrderBy(a => a.User!.Email)
+            .OrderBy(a => a.Status == AccountStatus.Pending ? 0 : 1)
+            .ThenBy(a => a.User!.Email)
             .Select(a => new AccountRow(
                 a.Id,
                 a.User!.Email ?? "(no email)",

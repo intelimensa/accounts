@@ -8,6 +8,13 @@
     <div class="col-md-7">
         <div class="feature-card mt-4">
             <h1 class="h3 mb-3">My Account</h1>
+            @if (Model.Account?.Status == Intelimensa.Accounts.Models.AccountStatus.Pending)
+            {
+                <div class="alert alert-info" role="alert">
+                    Your account is awaiting approval by the Intelimensa team. Downloads and sign-in from
+                    AxoSync become available once it is approved.
+                </div>
+            }
             <dl class="row mb-0">
                 <dt class="col-sm-4">Email</dt>
                 <dd class="col-sm-8">@Model.Email</dd>

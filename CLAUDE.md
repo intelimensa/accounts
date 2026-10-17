@@ -57,7 +57,7 @@ project/one database/one deploy is the right amount of infrastructure.
 - **Per-account expiry (`ExpiresAt`).** The loaned-device cohort has a study end date; access
   should lapse on its own rather than depending on someone remembering to revoke every
   participant by hand.
-- **No subscriptions/payments.** `Accounts.Status` is a simple active/revoked flag set by staff,
+- **No subscriptions/payments.** `Accounts.Status` is a simple Active/Revoked/Pending flag set by staff,
   not something driven by webhooks or payment events.
 
 ## Data model
@@ -181,8 +181,21 @@ a `"Staff"` ASP.NET Core Identity role and a matching `"Staff"` authorization po
 is seeded idempotently on every startup (`RoleManager.RoleExistsAsync`/`CreateAsync` right after
 `builder.Build()`) so it always exists, even against a fresh DB.
 
-**There is no UI to grant the `Staff` role** — with zero staff users there's nothing to gate a
-"manage staff" page behind yet, so promotion is a manual one-time SQL step per person:
+**Sign-up needs approval.** `Register` creates the account `Pending` (`AccountStatus.Pending = 2`, stored as an integer, so
+no migration was needed and existing accounts stayed Active). `AccountPolicy.IsUsable` passes only `Active`, so a pending
+account can't use `/Download`, the API login or anything else gated on it, and `Account/Status` says it is awaiting approval.
+Staff approve on `/Staff` (pending accounts are listed first with an **Approve** button that also takes an optional expiry).
+There is deliberately no `Participant` role: roles are baked into the cookie/JWT, `Status`/`ExpiresAt` are read per request.
+
+**Roles and the Administrator.** `Administrator` (policy `Administrator`, folder `/Admin`, seeded at startup) is the only role
+that grants or revokes `Staff`, `Manufacturer` and `Publisher`, at `/Admin/Roles`. It can't change its own roles, and the UI
+can't grant `Administrator` itself: that stays `scripts/setrole.sh --role Administrator`. Administrator doesn't imply Staff.
+A role change updates the user's security stamp, and `Security/SecurityStampCheck` (cookie `OnValidatePrincipal`, on every
+request) ends that user's web session at once; a JWT already issued keeps its roles until it expires (15 min). The stock
+`SecurityStampValidator` isn't used (it signs out the two-factor schemes, which aren't registered).
+
+**The first Administrator (and any role, without one) is granted by hand**: `scripts/setrole.sh --account <email> --role Administrator --enabled`,
+or the SQL below, once per person:
 
 ```sql
 INSERT INTO AspNetUserRoles (UserId, RoleId)
