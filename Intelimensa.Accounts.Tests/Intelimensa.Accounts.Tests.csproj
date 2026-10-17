@@ -28,6 +28,8 @@
   <ItemGroup>
     <!-- The shared release-signing fixture; this repo owns it (see scripts/gen-signing-vectors.py). -->
     <Content Include="..\testdata\release-signing-vectors.json" Link="testdata\release-signing-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The firmware repo owns this one (quarry/tests/gen-firmware-image-vectors.py); sync-vectors.sh keeps the copy identical. -->
+    <Content Include="..\testdata\firmware-image-vectors.json" Link="testdata\firmware-image-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

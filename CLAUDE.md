@@ -266,9 +266,11 @@ Firmware developers use their own flash tools; only production-ready builds are 
 
 - **Versions are read from the file, never typed.** `Firmware/FirmwareImage.cs` (`Describe`) is a port of
   Quarry's `FirmwareHex.Describe` plus the MS-V3 app-header check (firmware repo,
-  `quarry/.../Identity/FirmwareHex.cs`, `Update/AppImage.cs`); `Firmware/IntelHex.cs` is the matching reader. Checked
-  against all of the firmware repo's real hex files: it agrees with Quarry's reader. **If the image layout
-  or version format changes, change both copies.** An image is `Single` (MS-V1/V2: the one `MAJOR.HEIGHT+hash`
+  `quarry/.../Identity/FirmwareHex.cs`, `Update/AppImage.cs`); `Firmware/IntelHex.cs` is the matching reader. **If the image layout
+  or version format changes, change both copies.** `testdata/firmware-image-vectors.json` pins what they must agree on
+  (owned by the firmware repo, `quarry/tests/`; `FirmwareImageVectorTests` runs it here): the catalog may be stricter than
+  Quarry, never looser. (The copies had drifted before this fixture: the port still read the 16 KB-bootloader, header-format-1
+  layout, so no current MS-V3 image would have been accepted.) An image is `Single` (MS-V1/V2: the one `MAJOR.HEIGHT+hash`
   string found in flash), `MsV3Factory` (bootloader + app: app version from the CRC-checked header, bootloader
   version from the bootloader flash range) or `MsV3App` (app only: the header).
 - **Data**: `FirmwareBuilds` (`DeviceType` = the `msv1`/`msv2`/`msv3` firmware family, `Kind`

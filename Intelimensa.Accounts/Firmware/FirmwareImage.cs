@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -29,22 +30,27 @@ public sealed class FirmwareImageException(string message) : Exception(message);
 /// MindStoneQuarry's <c>FirmwareHex.Describe</c> and the MS-V3 header check of its <c>AppImage</c> (firmware
 /// repo, <c>Intelimensa.Quarry.Core/Identity/FirmwareHex.cs</c> and <c>Update/AppImage.cs</c>), so the server
 /// and the station agree on a file's version. If the firmware's image layout changes, change both.
+/// <c>testdata/firmware-image-vectors.json</c> (owned by the firmware repo, <c>quarry/tests/</c>) pins what they
+/// must agree on, and <c>FirmwareImageVectorTests</c> runs it. The app's signature is not checked here, as in
+/// Quarry's <c>Describe</c>: the bootloader verifies it, and Quarry checks it before flashing.
 /// </summary>
 public static partial class FirmwareImage
 {
     // physical addresses (pic32/MS-V3/src/boot_iface.h)
     private const uint BootloaderStart = 0x1D000000;
-    private const uint BootloaderEnd = 0x1D004000;
+    private const uint BootloaderEnd = 0x1D008000;
 
     // MS-V3 app, kseg0 addresses as the bootloader protocol uses them
     private const uint KsegMask = 0x1FFFFFFF;       // kseg0 address -> physical (HEX) address
-    private const uint HeaderAddress = 0x9D004000;
-    private const uint ImageStart = 0x9D004400;
-    private const uint AppEnd = 0x9D01EC00;         // identity page
+    private const uint HeaderAddress = 0x9D008000;
+    private const uint ImageStart = 0x9D008400;
+    private const uint AppEnd = 0x9D01E800;         // settings page: updates touch nothing from here up
     private const uint Magic = 0x3356534D;          // "MSV3"
-    private const uint Format = 1;
-    private const int HeaderSize = 56;              // magic, format, entry, length, crc32, version[32], header_crc
-    private const int HeaderCrcOffset = 52;
+    private const uint Format = 2;
+    // magic, format, entry, length, crc32, version[32], key, sha512[64], signature[64], header_crc
+    private const int HeaderSize = 188;
+    private const int Sha512Offset = 56;
+    private const int HeaderCrcOffset = 184;
 
     // FIRMWARE_VERSION is a NUL-terminated string in flash: MAJOR.HEIGHT+shorthash, plus .dirty for an unclean tree
     [GeneratedRegex(@"(?<![0-9A-Za-z.+])(\d+\.\d+\+[0-9a-f]{7,40}(?:\.dirty)?)\0")]
@@ -120,6 +126,8 @@ public static partial class FirmwareImage
             throw new FirmwareImageException("The app header's length or entry address is out of range.");
         if (Crc32(Range(ImageStart, (int)length)) != imageCrc)
             throw new FirmwareImageException("The app image doesn't match its header's CRC.");
+        if (!SHA512.HashData(Range(ImageStart, (int)length)).AsSpan().SequenceEqual(header.AsSpan(Sha512Offset, 64)))
+            throw new FirmwareImageException("The app image doesn't match its header's SHA-512.");
 
         return Encoding.ASCII.GetString(header, 20, 32).Split('\0')[0];
     }
