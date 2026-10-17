@@ -1,0 +1,33 @@
+# H: two builds of the same project at the same moment (an IDE's background build next to a test run)
+ round 1
+   tests project build                          pass
+   web project build                            pass
+ round 2
+   tests project build                          pass
+   web project build                            pass
+ round 3
+   tests project build                          pass
+   web project build                            pass
+ round 4
+   tests project build                          pass
+   web project build                            pass
+ round 5
+   tests project build                          pass
+   web project build                            pass
+ round 6
+   tests project build                          pass
+   web project build                            pass
+# I: a .cshtml rewritten in place (truncate, then write, as a non-atomic editor save) while a build runs
+ round 1
+   build during rewrites of Login.cshtml        pass
+ round 2
+   build during rewrites of Login.cshtml        pass
+ round 3
+   build during rewrites of Login.cshtml        pass
+ round 4
+   build during rewrites of Login.cshtml        pass
+ round 5
+   build during rewrites of Login.cshtml        pass
+# J: after all that, is the tree consistent? (clean-state rebuild must pass)
+   final rebuild                                pass
+# done

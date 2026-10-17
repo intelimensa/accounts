@@ -1,0 +1,36 @@
+# env
+10.0.401
+27.0.1
+arm64
+# A: fresh servers, cold build, then 6 warm rebuilds of accounts only (an mtime change each time)
+ 1 A0 cold                                              pass  (1s)
+ 2 A1 warm, accounts only                               pass  (3s)
+ 3 A2 warm, accounts only                               pass  (3s)
+ 4 A3 warm, accounts only                               pass  (3s)
+ 5 A4 warm, accounts only                               pass  (2s)
+ 6 A5 warm, accounts only                               pass  (3s)
+ 7 A6 warm, accounts only                               pass  (3s)
+# B: warm server, Quarry + AxoSync built in between (4 rounds)
+ 8 B1 after quarry+axosync builds                       pass  (2s)
+ 9 B2 after quarry+axosync builds                       pass  (2s)
+10 B3 after quarry+axosync builds                       pass  (2s)
+11 B4 after quarry+axosync builds                       pass  (1s)
+# C: content change then restore
+12 C1 content changed                                   pass  (2s)
+13 C2 content restored                                  pass  (2s)
+# D: a razor file touched (no content change)
+14 D1 Login.cshtml mtime                                pass  (1s)
+# E: if anything failed above: does it persist, and what clears it? (rebuild untouched; then shutdown; then rebuild)
+15 E1 rebuild, nothing changed                          pass  (1s)
+16 E2 after build-server shutdown                       pass  (1s)
+# F: control: the same interleaved sequence without the shared compiler server
+17 F1 interleaved, UseSharedCompilation=false           pass  (3s)
+18 F2 interleaved, UseSharedCompilation=false           pass  (4s)
+19 F3 interleaved, UseSharedCompilation=false           pass  (4s)
+20 F4 interleaved, UseSharedCompilation=false           pass  (3s)
+# G: control: interleaved with the shared server again, to see it come back
+21 G1 interleaved, shared server                        pass  (2s)
+22 G2 interleaved, shared server                        pass  (2s)
+23 G3 interleaved, shared server                        pass  (2s)
+24 G4 interleaved, shared server                        pass  (1s)
+# done
