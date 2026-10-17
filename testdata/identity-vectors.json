@@ -1,0 +1,457 @@
+{
+  "contract": "intelimensa-identity-v1",
+  "description": "Shared fixture for the per-unit identity record and the dcGetIdentity reply (firmware/DEVICE_IDENTITY.md). Owner: firmware repo (testdata/identity-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). records: a parser given recordHex (64 bytes, or as noted) must give `expect`; where a record has `build`, a builder given those parts must produce exactly recordHex, and replyHex is what the unit sends for it. `hostsOnly` records are not exactly 64 bytes, so the firmware's parser (which is handed 64) skips them. replies: a host given wireHex must give `expect` (a strict host, one that validates what it reads, must refuse `strictHostsOnly` ones; a host that only shows the serial need not). buildRejects: a builder must refuse these parts. crc32: the record's CRC is zlib's CRC-32, whose check value for '123456789' is cbf43926.",
+  "crc32Check": {
+    "inputAscii": "123456789",
+    "crc32": "cbf43926"
+  },
+  "codeAlphabet": "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+  "records": [
+    {
+      "name": "typical",
+      "note": "a serial as the server issues it and a registration code",
+      "build": {
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      },
+      "recordHex": "4449534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000b15ebe03",
+      "replyHex": "000c4d5356334730315341544b580a374b513439585432414d",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      }
+    },
+    {
+      "name": "shortest-serial",
+      "note": "one character",
+      "build": {
+        "serial": "A",
+        "code": "0123456789"
+      },
+      "recordHex": "4449534d01010a004100000000000000000000000000000000000000000000000000000000000000303132333435363738390000000000000000000054accc23",
+      "replyHex": "0001410a30313233343536373839",
+      "expect": {
+        "valid": true,
+        "serial": "A",
+        "code": "0123456789"
+      }
+    },
+    {
+      "name": "longest-serial",
+      "note": "32 printable characters, punctuation included",
+      "build": {
+        "serial": "MSV3G01SATKX!\"#$%&'()*+,-./01234",
+        "code": "ABCDEFGHJK"
+      },
+      "recordHex": "4449534d01200a004d5356334730315341544b582122232425262728292a2b2c2d2e2f303132333441424344454647484a4b000000000000000000004b4ae26f",
+      "replyHex": "00204d5356334730315341544b582122232425262728292a2b2c2d2e2f30313233340a41424344454647484a4b",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G01SATKX!\"#$%&'()*+,-./01234",
+        "code": "ABCDEFGHJK"
+      }
+    },
+    {
+      "name": "code-alphabet-2",
+      "note": "",
+      "build": {
+        "serial": "MSV3G0000018",
+        "code": "MNPQRSTVWX"
+      },
+      "recordHex": "4449534d010c0a004d535633473030303030313800000000000000000000000000000000000000004d4e505152535456575800000000000000000000f771fd1d",
+      "replyHex": "000c4d53563347303030303031380a4d4e5051525354565758",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G0000018",
+        "code": "MNPQRSTVWX"
+      }
+    },
+    {
+      "name": "code-alphabet-3",
+      "note": "",
+      "build": {
+        "serial": "MSV3G0000018",
+        "code": "YZ01234567"
+      },
+      "recordHex": "4449534d010c0a004d53563347303030303031380000000000000000000000000000000000000000595a303132333435363700000000000000000000792b92e9",
+      "replyHex": "000c4d53563347303030303031380a595a3031323334353637",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G0000018",
+        "code": "YZ01234567"
+      }
+    },
+    {
+      "name": "blank-flash",
+      "note": "an erased page reads 0xFF: not provisioned",
+      "recordHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "all-zero",
+      "note": "",
+      "recordHex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "magic-bytes-in-text-order",
+      "note": "the letters M S I D in that order on flash; the magic is stored little-endian, so the right bytes read D I S M",
+      "recordHex": "4d534944010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d000000000000000000003117a421",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "wrong-magic",
+      "note": "one bit off, CRC fixed",
+      "recordHex": "4549534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d000000000000000000003ed06dc9",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "version-0",
+      "note": "",
+      "recordHex": "4449534d000c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000664d2b1e",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "version-2",
+      "note": "a newer layout is not read by this reader",
+      "recordHex": "4449534d020c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000c86a0125",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "serial-length-0",
+      "note": "",
+      "recordHex": "4449534d01000a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000300cdc40",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "serial-length-33",
+      "note": "one more than the field holds",
+      "recordHex": "4449534d01210a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000a6c88ff9",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "code-length-9",
+      "note": "",
+      "recordHex": "4449534d010c09004d5356334730315341544b580000000000000000000000000000000000000000374b51343958543241000000000000000000000083f08c1c",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "code-length-11",
+      "note": "",
+      "recordHex": "4449534d010c0b004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d0000000000000000000007f71b02",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "code-length-0",
+      "note": "",
+      "recordHex": "4449534d010c00004d5356334730315341544b580000000000000000000000000000000000000000000000000000000000000000000000000000000018ac3442",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "crc-wrong",
+      "note": "the CRC field flipped",
+      "recordHex": "4449534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000b05ebe03",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "serial-changed-after-crc",
+      "note": "a serial byte flipped without fixing the CRC",
+      "recordHex": "4449534d010c0a004d5256334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000b15ebe03",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "code-changed-after-crc",
+      "note": "",
+      "recordHex": "4449534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374a513439585432414d00000000000000000000b15ebe03",
+      "expect": {
+        "valid": false
+      }
+    },
+    {
+      "name": "reserved-byte-7-set",
+      "note": "reserved fields aren't checked",
+      "recordHex": "4449534d010c0a014d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000f0ee667d",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      }
+    },
+    {
+      "name": "reserved-56-set",
+      "note": "",
+      "recordHex": "4449534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000001020304607ac694",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      }
+    },
+    {
+      "name": "padding-after-serial-not-zero",
+      "note": "only serialLen bytes are the serial",
+      "recordHex": "4449534d010c0a004d5356334730315341544b58000000000000000000000000aaaaaaaaaaaaaaaa374b513439585432414d00000000000000000000008a4f88",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      }
+    },
+    {
+      "name": "characters-not-checked-by-the-record",
+      "note": "the record layer doesn't check what the serial and code are made of (builders and the reply reader of a strict host do)",
+      "recordHex": "4449534d01040a0041204207000000000000000000000000000000000000000000000000000000006c6f776572636173653100000000000000000000adcfe05a",
+      "expect": {
+        "valid": true,
+        "serial": "A B\u0007",
+        "code": "lowercase1"
+      }
+    },
+    {
+      "name": "shorter-than-64-bytes",
+      "note": "a truncated read",
+      "recordHex": "4449534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000b15ebe",
+      "expect": {
+        "valid": false
+      },
+      "hostsOnly": true
+    },
+    {
+      "name": "longer-than-64-bytes",
+      "note": "a whole 1 KB page read back: only the first 64 bytes are the record",
+      "recordHex": "4449534d010c0a004d5356334730315341544b580000000000000000000000000000000000000000374b513439585432414d00000000000000000000b15ebe03ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "expect": {
+        "valid": true,
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      },
+      "hostsOnly": true
+    }
+  ],
+  "replies": [
+    {
+      "name": "not-provisioned",
+      "note": "status 1: blank or invalid record",
+      "wireHex": "01",
+      "expect": {
+        "outcome": "notProvisioned"
+      }
+    },
+    {
+      "name": "reply-typical",
+      "note": "",
+      "wireHex": "000c4d5356334730315341544b580a374b513439585432414d",
+      "expect": {
+        "outcome": "identity",
+        "serial": "MSV3G01SATKX",
+        "code": "7KQ49XT2AM"
+      }
+    },
+    {
+      "name": "reply-shortest-serial",
+      "note": "",
+      "wireHex": "0001410a30313233343536373839",
+      "expect": {
+        "outcome": "identity",
+        "serial": "A",
+        "code": "0123456789"
+      }
+    },
+    {
+      "name": "reply-longest-serial",
+      "note": "",
+      "wireHex": "00204d5356334730315341544b582122232425262728292a2b2c2d2e2f30313233340a41424344454647484a4b",
+      "expect": {
+        "outcome": "identity",
+        "serial": "MSV3G01SATKX!\"#$%&'()*+,-./01234",
+        "code": "ABCDEFGHJK"
+      }
+    },
+    {
+      "name": "reply-code-alphabet-2",
+      "note": "",
+      "wireHex": "000c4d53563347303030303031380a4d4e5051525354565758",
+      "expect": {
+        "outcome": "identity",
+        "serial": "MSV3G0000018",
+        "code": "MNPQRSTVWX"
+      }
+    },
+    {
+      "name": "reply-code-alphabet-3",
+      "note": "",
+      "wireHex": "000c4d53563347303030303031380a595a3031323334353637",
+      "expect": {
+        "outcome": "identity",
+        "serial": "MSV3G0000018",
+        "code": "YZ01234567"
+      }
+    },
+    {
+      "name": "status-2",
+      "note": "an unknown status",
+      "wireHex": "02",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "serial-length-0",
+      "note": "",
+      "wireHex": "00000a374b513439585432414d",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "serial-length-33",
+      "note": "",
+      "wireHex": "00214141414141414141414141414141414141414141414141414141414141414141410a374b513439585432414d",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "code-length-9",
+      "note": "",
+      "wireHex": "000c4d5356334730315341544b5809374b51343958543241",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "serial-not-printable",
+      "note": "garbage on the line is not an identity",
+      "wireHex": "000c4d5356334730310741544b580a374b513439585432414d",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "serial-with-space",
+      "note": "",
+      "wireHex": "000c4d5356332030315341544b580a374b513439585432414d",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "code-with-excluded-letter",
+      "note": "I, L, O and U aren't in the alphabet",
+      "wireHex": "000c4d5356334730315341544b580a374b5134395854324149",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    },
+    {
+      "name": "code-lowercase",
+      "note": "",
+      "wireHex": "000c4d5356334730315341544b580a376b713439787432616d",
+      "expect": {
+        "outcome": "rejected"
+      },
+      "strictHostsOnly": true
+    }
+  ],
+  "buildRejects": [
+    {
+      "serial": "",
+      "code": "7KQ49XT2AM",
+      "why": "empty serial"
+    },
+    {
+      "serial": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "code": "7KQ49XT2AM",
+      "why": "serial longer than 32"
+    },
+    {
+      "serial": "MSV3 G01SATKX",
+      "code": "7KQ49XT2AM",
+      "why": "space in the serial"
+    },
+    {
+      "serial": "MSV3G01\tATKX",
+      "code": "7KQ49XT2AM",
+      "why": "control character in the serial"
+    },
+    {
+      "serial": "MSV3G01\u00e9ATKX",
+      "code": "7KQ49XT2AM",
+      "why": "non-ASCII character in the serial"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ49XT2A",
+      "why": "code of 9"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ49XT2AMA",
+      "why": "code of 11"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ4-9XT2A",
+      "why": "dash in the code"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7kq49xt2am",
+      "why": "lowercase code"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ49XT2AI",
+      "why": "I is not in the alphabet"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ49XT2AL",
+      "why": "L is not in the alphabet"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ49XT2AO",
+      "why": "O is not in the alphabet"
+    },
+    {
+      "serial": "MSV3G01SATKX",
+      "code": "7KQ49XT2AU",
+      "why": "U is not in the alphabet"
+    }
+  ]
+}

@@ -31,6 +31,8 @@
     <!-- The firmware repo owns this one (quarry/tests/gen-firmware-image-vectors.py); sync-vectors.sh keeps the copy identical. -->
     <Content Include="..\testdata\firmware-image-vectors.json" Link="testdata\firmware-image-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\testdata\serial-number-vectors.json" Link="testdata\serial-number-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The firmware repo owns this one (firmware/testdata/gen-identity-vectors.py); sync-vectors.sh keeps the copy identical. -->
+    <Content Include="..\testdata\identity-vectors.json" Link="testdata\identity-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -33,7 +33,7 @@ public class SerialNumberVectorTests
     [Fact]
     public void The_sequence_range_is_the_fixtures()
     {
-        Assert.Equal(Doc.GetProperty("maxSequence").GetInt32(), SerialNumber.MaxSequence);
+        Assert.Equal(SerialNumber.MaxSequence, Doc.GetProperty("maxSequence").GetInt32());
     }
 
     [Theory]
