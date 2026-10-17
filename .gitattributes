@@ -1,0 +1,19 @@
+# Line endings: LF in the working tree on every machine, Windows included.
+# - scripts/*.sh run on the Linux server and in Git Bash, where a CR breaks them
+# - testdata/*.json are byte-identical copies of fixtures shared with other repos (the workspace repo's sync-vectors.sh compares them with cmp)
+* text=auto eol=lf
+
+*.cs      text eol=lf
+*.cshtml  text eol=lf
+*.csproj  text eol=lf
+*.slnx    text eol=lf
+*.json    text eol=lf
+*.sh      text eol=lf
+*.py      text eol=lf
+*.md      text eol=lf
+*.txt     text eol=lf
+*.css     text eol=lf
+*.js      text eol=lf
+
+*.png   binary
+*.ico   binary
