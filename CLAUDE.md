@@ -207,7 +207,7 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
 - **Manufacturing API** (`Api/Manufacturing/`, `/api/manufacturing/units/{reserve,confirm,void,rekey,firmware}` plus `GET /api/manufacturing/options`):
   JWT, gated by the `Manufacturer` role/policy (separate from `Staff`, seeded at startup, granted by
   manual SQL like Staff). Account status is re-checked on every call. Serials are stored and sent **dashless**,
-  `PPPPRVAAAAAC` (`Manufacturing/SerialNumber.cs`); `SerialNumber.ToDisplay` gives the human-facing
+  `PPPPRVAAAAAC` (`Manufacturing/SerialNumber.cs`, pinned against Quarry's copy by `testdata/serial-number-vectors.json`: change the format there first, `scripts/gen-serial-vectors.py`, then `./sync-vectors.sh --fix` in the workspace root); `SerialNumber.ToDisplay` gives the human-facing
   `PPPP-RVAA-AAAC` (API responses carry both as `serialNumber`/`serialNumberLabel`) and `TryNormalize`
   accepts label form/underscores/lowercase, which `BciDeviceLookup.FindBySerialAsync` uses for every
   serial input (exact match first, so legacy free-form serials still work). Layout: 4-char product, region/variant char, format-version char (`0`),

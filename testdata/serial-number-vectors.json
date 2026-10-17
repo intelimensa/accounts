@@ -1,0 +1,426 @@
+{
+  "contract": "intelimensa-serial-number-v1",
+  "description": "Shared fixture for the unit serial-number format. Owner: accounts repo (testdata/serial-number-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). Format: PPPPRVAAAAAC, product, region, version '0', 5-character base-36 sequence, Luhn mod-36 check character (firmware/DEVICE_IDENTITY.md). valid: building from the parts must give `serial`, which must be valid and display as `display`, and `sequence` encodes to `sequenceText`. normalize: normalising `input` gives `canonical`, or fails when it is null. invalid: none of these is a valid canonical serial. displayUnchanged: not canonical, so shown as given. Expected values come from the plain Luhn mod-N algorithm in scripts/gen-serial-vectors.py.",
+  "maxSequence": 60466175,
+  "valid": [
+    {
+      "product": "MSV2",
+      "region": "G",
+      "sequence": 0,
+      "sequenceText": "00000",
+      "serial": "MSV2G000000A",
+      "display": "MSV2-G000-000A"
+    },
+    {
+      "product": "MSV2",
+      "region": "G",
+      "sequence": 1,
+      "sequenceText": "00001",
+      "serial": "MSV2G0000018",
+      "display": "MSV2-G000-0018"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 17,
+      "sequenceText": "0000H",
+      "serial": "MSV3G00000HB",
+      "display": "MSV3-G000-00HB"
+    },
+    {
+      "product": "MSV1",
+      "region": "G",
+      "sequence": 35,
+      "sequenceText": "0000Z",
+      "serial": "MSV1G00000ZC",
+      "display": "MSV1-G000-00ZC"
+    },
+    {
+      "product": "MSV1",
+      "region": "G",
+      "sequence": 36,
+      "sequenceText": "00010",
+      "serial": "MSV1G000010A",
+      "display": "MSV1-G000-010A"
+    },
+    {
+      "product": "MSV2",
+      "region": "G",
+      "sequence": 3000000,
+      "sequenceText": "1SATC",
+      "serial": "MSV2G01SATCF",
+      "display": "MSV2-G01S-ATCF"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 3000008,
+      "sequenceText": "1SATK",
+      "serial": "MSV3G01SATKX",
+      "display": "MSV3-G01S-ATKX"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 12345678,
+      "sequenceText": "7CLZI",
+      "serial": "MSV3G07CLZIC",
+      "display": "MSV3-G07C-LZIC"
+    },
+    {
+      "product": "MSV2",
+      "region": "A",
+      "sequence": 1,
+      "sequenceText": "00001",
+      "serial": "MSV2A000001K",
+      "display": "MSV2-A000-001K"
+    },
+    {
+      "product": "MSV3",
+      "region": "0",
+      "sequence": 1,
+      "sequenceText": "00001",
+      "serial": "MSV300000013",
+      "display": "MSV3-0000-0013"
+    },
+    {
+      "product": "AB12",
+      "region": "Z",
+      "sequence": 7,
+      "sequenceText": "00007",
+      "serial": "AB12Z000007O",
+      "display": "AB12-Z000-007O"
+    },
+    {
+      "product": "MSV2",
+      "region": "G",
+      "sequence": 60466174,
+      "sequenceText": "ZZZZY",
+      "serial": "MSV2G0ZZZZYH",
+      "display": "MSV2-G0ZZ-ZZYH"
+    },
+    {
+      "product": "MSV2",
+      "region": "G",
+      "sequence": 60466175,
+      "sequenceText": "ZZZZZ",
+      "serial": "MSV2G0ZZZZZF",
+      "display": "MSV2-G0ZZ-ZZZF"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 100,
+      "sequenceText": "0002S",
+      "serial": "MSV3G00002SM",
+      "display": "MSV3-G000-02SM"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 102,
+      "sequenceText": "0002U",
+      "serial": "MSV3G00002UI",
+      "display": "MSV3-G000-02UI"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 103,
+      "sequenceText": "0002V",
+      "serial": "MSV3G00002VG",
+      "display": "MSV3-G000-02VG"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 104,
+      "sequenceText": "0002W",
+      "serial": "MSV3G00002WE",
+      "display": "MSV3-G000-02WE"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 108,
+      "sequenceText": "00030",
+      "serial": "MSV3G0000306",
+      "display": "MSV3-G000-0306"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 109,
+      "sequenceText": "00031",
+      "serial": "MSV3G0000314",
+      "display": "MSV3-G000-0314"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 110,
+      "sequenceText": "00032",
+      "serial": "MSV3G0000322",
+      "display": "MSV3-G000-0322"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 111,
+      "sequenceText": "00033",
+      "serial": "MSV3G0000330",
+      "display": "MSV3-G000-0330"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 112,
+      "sequenceText": "00034",
+      "serial": "MSV3G000034Y",
+      "display": "MSV3-G000-034Y"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 113,
+      "sequenceText": "00035",
+      "serial": "MSV3G000035W",
+      "display": "MSV3-G000-035W"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 114,
+      "sequenceText": "00036",
+      "serial": "MSV3G000036U",
+      "display": "MSV3-G000-036U"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 115,
+      "sequenceText": "00037",
+      "serial": "MSV3G000037S",
+      "display": "MSV3-G000-037S"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 116,
+      "sequenceText": "00038",
+      "serial": "MSV3G000038Q",
+      "display": "MSV3-G000-038Q"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 126,
+      "sequenceText": "0003I",
+      "serial": "MSV3G00003I5",
+      "display": "MSV3-G000-03I5"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 128,
+      "sequenceText": "0003K",
+      "serial": "MSV3G00003K1",
+      "display": "MSV3-G000-03K1"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 129,
+      "sequenceText": "0003L",
+      "serial": "MSV3G00003LZ",
+      "display": "MSV3-G000-03LZ"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 131,
+      "sequenceText": "0003N",
+      "serial": "MSV3G00003NV",
+      "display": "MSV3-G000-03NV"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 132,
+      "sequenceText": "0003O",
+      "serial": "MSV3G00003OT",
+      "display": "MSV3-G000-03OT"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 133,
+      "sequenceText": "0003P",
+      "serial": "MSV3G00003PR",
+      "display": "MSV3-G000-03PR"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 134,
+      "sequenceText": "0003Q",
+      "serial": "MSV3G00003QP",
+      "display": "MSV3-G000-03QP"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 135,
+      "sequenceText": "0003R",
+      "serial": "MSV3G00003RN",
+      "display": "MSV3-G000-03RN"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 136,
+      "sequenceText": "0003S",
+      "serial": "MSV3G00003SL",
+      "display": "MSV3-G000-03SL"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 137,
+      "sequenceText": "0003T",
+      "serial": "MSV3G00003TJ",
+      "display": "MSV3-G000-03TJ"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 140,
+      "sequenceText": "0003W",
+      "serial": "MSV3G00003WD",
+      "display": "MSV3-G000-03WD"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 142,
+      "sequenceText": "0003Y",
+      "serial": "MSV3G00003Y9",
+      "display": "MSV3-G000-03Y9"
+    },
+    {
+      "product": "MSV3",
+      "region": "G",
+      "sequence": 143,
+      "sequenceText": "0003Z",
+      "serial": "MSV3G00003Z7",
+      "display": "MSV3-G000-03Z7"
+    }
+  ],
+  "normalize": [
+    {
+      "input": "MSV2G01SATCF",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "msv2g01satcf",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "MSV2-G01S-ATCF",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "msv2-g01s-atcf",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "MSV2_G01SATCF",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "  MSV2-G01S-ATCF\t",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "MSV2 G01S ATCF",
+      "canonical": "MSV2G01SATCF"
+    },
+    {
+      "input": "",
+      "canonical": null
+    },
+    {
+      "input": "   ",
+      "canonical": null
+    },
+    {
+      "input": "-----",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G01SATC",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G01SATCF0",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G000000B",
+      "canonical": null
+    },
+    {
+      "input": "MSV3G0S1ATCE",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G11SATCF",
+      "canonical": null
+    },
+    {
+      "input": "MSV!G01SATCF",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G0\u0131SATCF",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G0\u017fSATCF",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G0\u212aSATCF",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G0\uff10SATCF",
+      "canonical": null
+    },
+    {
+      "input": "MSV2G0\u0660SATCF",
+      "canonical": null
+    }
+  ],
+  "invalid": [
+    "MSV2G01SATC",
+    "MSV2G01SATCF0",
+    "MSV2G000000B",
+    "MSV3G0S1ATCE",
+    "MSV2G11SATCF",
+    "MSV!G01SATCF",
+    "MSV2G0\u0131SATCF",
+    "MSV2G0\u017fSATCF",
+    "MSV2G0\u212aSATCF",
+    "MSV2G0\uff10SATCF",
+    "MSV2G0\u0660SATCF"
+  ],
+  "displayUnchanged": [
+    "LEGACY-123",
+    "MSV2-G01S-ATCF-X",
+    "abc123",
+    "MSV2G01SATC",
+    "MSV2-G01S-ATCF",
+    "msv2g01satcf"
+  ]
+}
