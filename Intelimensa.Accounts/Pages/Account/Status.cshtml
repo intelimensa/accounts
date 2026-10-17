@@ -8,7 +8,21 @@
     <div class="col-md-7">
         <div class="feature-card mt-4">
             <h1 class="h3 mb-3">My Account</h1>
-            @if (Model.Account?.Status == Intelimensa.Accounts.Models.AccountStatus.Pending)
+            @if (Model.Message is not null)
+            {
+                <div class="alert alert-secondary" role="status">@Model.Message</div>
+            }
+            @if (!Model.EmailConfirmed)
+            {
+                <div class="alert alert-warning" role="alert">
+                    <p class="mb-2">Please confirm your email address: we sent a link to <strong>@Model.Email</strong>.
+                       Our team can only approve your account once it is confirmed.</p>
+                    <form method="post" asp-page-handler="Resend" class="mb-0">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm">Send the email again</button>
+                    </form>
+                </div>
+            }
+            else if (Model.Account?.Status == Intelimensa.Accounts.Models.AccountStatus.Pending)
             {
                 <div class="alert alert-info" role="alert">
                     Your account is awaiting approval by the Intelimensa team. Downloads and sign-in from

@@ -185,6 +185,16 @@ is seeded idempotently on every startup (`RoleManager.RoleExistsAsync`/`CreateAs
 no migration was needed and existing accounts stayed Active). `AccountPolicy.IsUsable` passes only `Active`, so a pending
 account can't use `/Download`, the API login or anything else gated on it, and `Account/Status` says it is awaiting approval.
 Staff approve on `/Staff` (pending accounts are listed first with an **Approve** button that also takes an optional expiry).
+**Email confirmation.** `Register` emails a confirmation link (`Email/EmailConfirmation.cs`; Identity token, 3-day lifespan, link
+to `/Account/ConfirmEmail`); `Account/Status` shows the state and a rate-limited resend (one per 2 minutes per user). An
+unconfirmed user may still sign in to the web portal (to resend) but is Pending, and staff can't set an account Active
+(Approve or the status select) until its address is confirmed, so confirmation is a precondition of approval and access
+needs no second check. The migration `ConfirmExistingEmails` marked every pre-existing user confirmed. Mail goes through
+`IMailSender`: `SmtpMailSender` (MailKit; `Email:Host/Port/User/Password/FromAddress/FromName`, 587 STARTTLS or 465) when
+`Email:Host` is set, otherwise `LoggingMailSender`, which only logs the message and link (development, `scripts/test-server.sh`;
+production warns at startup). Links use `App:PublicBaseUrl` (set in `appsettings.Production.json`; behind nginx the request
+says `http`). Send through the cPanel host's SMTP, not from the VPS (SPF doesn't list the VPS). `Email:Password` is a secret:
+user-secrets locally, `Email__Password` in the systemd unit.
 There is deliberately no `Participant` role: roles are baked into the cookie/JWT, `Status`/`ExpiresAt` are read per request.
 
 **Roles and the Administrator.** `Administrator` (policy `Administrator`, folder `/Admin`, seeded at startup) is the only role

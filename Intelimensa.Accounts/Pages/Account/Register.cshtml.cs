@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Intelimensa.Accounts.Data;
+using Intelimensa.Accounts.Email;
 using Intelimensa.Accounts.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -11,7 +12,9 @@ namespace Intelimensa.Accounts.Pages.Account;
 public class RegisterModel(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
-    ApplicationDbContext db) : PageModel
+    ApplicationDbContext db,
+    EmailConfirmation emailConfirmation,
+    ILogger<RegisterModel> log) : PageModel
 {
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -45,6 +48,17 @@ public class RegisterModel(
             Status = AccountStatus.Pending, // staff approve before it is usable
         });
         await db.SaveChangesAsync();
+
+        try
+        {
+            await emailConfirmation.SendAsync(user, $"{Request.Scheme}://{Request.Host}");
+            emailConfirmation.TryBeginResend(user.Id, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            // The account exists; the Status page offers a resend.
+            log.LogError(ex, "Could not send the confirmation email to {Email}", user.Email);
+        }
 
         await signInManager.SignInAsync(user, isPersistent: false);
         return RedirectToPage("/Account/Status");

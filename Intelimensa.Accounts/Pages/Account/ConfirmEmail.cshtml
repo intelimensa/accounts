@@ -1,0 +1,26 @@
+@page
+@model Intelimensa.Accounts.Pages.Account.ConfirmEmailModel
+@{
+    ViewData["Title"] = "Confirm email";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="feature-card mt-4">
+            <h1 class="h3 mb-3">Confirm email</h1>
+            @if (Model.Confirmed)
+            {
+                <p>Thanks, your email address is confirmed. Our team reviews new accounts before AxoSync
+                   access is switched on; you'll find the state of your account under
+                   <a asp-page="/Account/Status">My Account</a>.</p>
+            }
+            else
+            {
+                <div class="alert alert-warning" role="alert">
+                    This confirmation link is invalid or has expired. Sign in and use
+                    <a asp-page="/Account/Status">My Account</a> to get a new one.
+                </div>
+            }
+        </div>
+    </div>
+</div>

@@ -10,7 +10,14 @@ public class IndexModel(ApplicationDbContext db) : PageModel
 {
     public List<AccountRow> Accounts { get; private set; } = [];
 
+    // TempData: the handlers redirect, so a plain property would be lost before it is shown.
+    [TempData]
     public string? StatusMessage { get; set; }
+
+    [TempData]
+    public string? ErrorMessage { get; set; }
+
+    private const string UnconfirmedMessage = "Can't activate an account whose email address isn't confirmed.";
 
     public async Task OnGetAsync()
     {
@@ -22,9 +29,15 @@ public class IndexModel(ApplicationDbContext db) : PageModel
         AccountStatus status,
         string? expiresAtDate)
     {
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId);
+        var account = await db.Accounts.Include(a => a.User).FirstOrDefaultAsync(a => a.Id == accountId);
         if (account is not null)
         {
+            if (status == AccountStatus.Active && account.Status != AccountStatus.Active && !account.User!.EmailConfirmed)
+            {
+                ErrorMessage = UnconfirmedMessage;
+                return RedirectToPage();
+            }
+
             account.Status = status;
             account.ExpiresAt = string.IsNullOrWhiteSpace(expiresAtDate)
                 ? null
@@ -39,9 +52,15 @@ public class IndexModel(ApplicationDbContext db) : PageModel
 
     public async Task<IActionResult> OnPostApproveAsync(int accountId, string? expiresAtDate)
     {
-        var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId);
+        var account = await db.Accounts.Include(a => a.User).FirstOrDefaultAsync(a => a.Id == accountId);
         if (account is { Status: AccountStatus.Pending })
         {
+            if (!account.User!.EmailConfirmed)
+            {
+                ErrorMessage = UnconfirmedMessage;
+                return RedirectToPage();
+            }
+
             account.Status = AccountStatus.Active;
             account.ExpiresAt = string.IsNullOrWhiteSpace(expiresAtDate)
                 ? null
@@ -64,10 +83,11 @@ public class IndexModel(ApplicationDbContext db) : PageModel
                 a.Id,
                 a.User!.Email ?? "(no email)",
                 a.Status,
+                a.User!.EmailConfirmed,
                 a.ExpiresAt,
                 a.AccountDevices.Count))
             .ToListAsync();
     }
 
-    public record AccountRow(int AccountId, string Email, AccountStatus Status, DateTimeOffset? ExpiresAt, int RegisteredDeviceCount);
+    public record AccountRow(int AccountId, string Email, AccountStatus Status, bool EmailConfirmed, DateTimeOffset? ExpiresAt, int RegisteredDeviceCount);
 }

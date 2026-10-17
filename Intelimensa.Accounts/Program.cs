@@ -4,6 +4,7 @@ using Intelimensa.Accounts.Api.Manufacturing;
 using Intelimensa.Accounts.Api.Updates;
 using Intelimensa.Accounts.Api.Telemetry;
 using Intelimensa.Accounts.Data;
+using Intelimensa.Accounts.Email;
 using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Publishing;
@@ -24,6 +25,7 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AuthorizeFolder("/Account");
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
+    options.Conventions.AllowAnonymousToPage("/Account/ConfirmEmail");
     options.Conventions.AuthorizeFolder("/Admin", "Administrator");
     options.Conventions.AuthorizeFolder("/Staff", "Staff");
     options.Conventions.AuthorizeFolder("/Manufacturing", "ManufacturerPortal");
@@ -60,12 +62,28 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 
         options.User.RequireUniqueEmail = true;
 
-        // No email-sending infra exists yet -- registered accounts are usable immediately.
+        // Not RequireConfirmedAccount: an unconfirmed user must still be able to sign in to the web
+        // portal to ask for another confirmation email. They are Pending until staff approve, and
+        // staff can only approve a confirmed address, so this never opens API/download access.
         options.SignIn.RequireConfirmedAccount = false;
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddSignInManager();
+    .AddSignInManager()
+    .AddDefaultTokenProviders(); // AddIdentityCore doesn't: the email-confirmation token needs one
+builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromDays(3));
+
+builder.Services.AddOptions<EmailOptions>()
+    .Bind(builder.Configuration.GetSection("Email"))
+    .ValidateOnStart();
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<EmailOptions>, EmailOptionsValidator>();
+builder.Services.Configure<AppOptions>(builder.Configuration.GetSection("App"));
+builder.Services.AddSingleton<ConfirmationResendLimiter>();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]))
+    builder.Services.AddSingleton<IMailSender, SmtpMailSender>();
+else
+    builder.Services.AddSingleton<IMailSender, LoggingMailSender>();
+builder.Services.AddScoped<EmailConfirmation>();
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2idPasswordHasher>();
 builder.Services.AddScoped<TokenService>();
 
@@ -140,6 +158,9 @@ builder.Services.AddAuthorization(options =>
 });
 
 var app = builder.Build();
+
+if (string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]) && !app.Environment.IsDevelopment())
+    app.Logger.LogWarning("Email:Host is not set: confirmation emails are only logged, not sent, so new accounts cannot confirm their address.");
 
 // Idempotent: ensures the roles exist even on a fresh DB. Administrator is granted by hand
 // (scripts/setrole.sh); an Administrator grants the others at /Admin/Roles.

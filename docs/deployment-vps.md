@@ -185,6 +185,13 @@ environment variables — ASP.NET Core maps `Section:Key` to `SECTION__KEY`
 - **`ConnectionStrings:DefaultConnection`** — the default (`Data Source=accounts.db`)
   is a relative path, which resolves against whatever directory the process starts
   in. Point it at the persistent data directory created in step 6 instead.
+- **`Email:*`** — SMTP for the account-confirmation email. `Email:Host` (port 587 STARTTLS by default),
+  `Email:User`, `Email:Password` (secret), `Email:FromAddress`, optional `Email:FromName`. Use a dedicated
+  mailbox such as `no-reply@intelimensa.com` on the domain's own mail server (cPanel/Exim, port 587 reachable from
+  the VPS): its SPF/DKIM cover mail sent through it, whereas mail sent from the VPS directly would fail SPF. The app
+  refuses to start if `Email:Host` is set without the rest. With no host, mail is only logged and new accounts can't
+  confirm. The public links come from `App:PublicBaseUrl` (already set in `appsettings.Production.json`).
+  Locally: `dotnet user-secrets set "Email:Password" ...` etc.
 - **`Releases:SigningPublicKey`** — the public half of the release-signing key
   (base64; not a secret, but it must be set). While it is set the server refuses unsigned
   or wrongly signed builds and won't publish a release with an unsigned artifact. Leaving
@@ -226,6 +233,12 @@ Environment="ConnectionStrings__DefaultConnection=Data Source=/var/www/accounts/
 # Uploaded release binaries. Must be outside /var/www/accounts/app (rsync --delete would wipe it).
 Environment=Releases__StoragePath=/var/www/accounts/data/releases
 Environment=Releases__SigningPublicKey=REPLACE_WITH_PUBLIC_KEY_BASE64
+# Outgoing mail for account confirmation (the host's cPanel SMTP; see section 7). Without Email__Host
+# nothing is sent, only logged.
+Environment=Email__Host=REPLACE_WITH_SMTP_HOST
+Environment=Email__User=no-reply@intelimensa.com
+Environment=Email__Password=REPLACE_WITH_MAILBOX_PASSWORD
+Environment=Email__FromAddress=no-reply@intelimensa.com
 # Firmware hex catalog for the manufacturing station; same rule.
 Environment=Firmware__StoragePath=/var/www/accounts/data/firmware-files
 
