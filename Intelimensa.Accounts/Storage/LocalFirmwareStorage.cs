@@ -14,7 +14,9 @@ public class FirmwareStorageOptions
 }
 
 /// <summary>
-/// Stores builds as <c>{root}/{deviceType}/{kind}/{version}/{fileName}</c>. Like release storage, the
+/// Stores builds as <c>{root}/{deviceType}/{kind}/{version}/{fileName}</c>, with a
+/// <c>{bootloaderVersion}/</c> folder before the file name for a factory image (so two factory builds
+/// sharing an app version never share a path). Like release storage, the
 /// root must live outside the web root and outside the rsync-deployed app directory (see
 /// docs/deployment-vps.md); files are only ever served through the manufacturing API.
 /// </summary>
@@ -28,9 +30,12 @@ public class LocalFirmwareStorage : IFirmwareStorage
     }
 
     public async Task<StoredArtifact> SaveAsync(
-        string deviceType, FirmwareKind kind, string version, string fileName, Stream content, CancellationToken ct)
+        string deviceType, FirmwareKind kind, string version, string? bootloaderVersion, string fileName, Stream content,
+        CancellationToken ct)
     {
-        var key = $"{deviceType}/{kind}/{version}/{fileName}";
+        var key = bootloaderVersion is null
+            ? $"{deviceType}/{kind}/{version}/{fileName}"
+            : $"{deviceType}/{kind}/{version}/{bootloaderVersion}/{fileName}";
         var finalPath = ResolvePath(key);
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
 

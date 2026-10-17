@@ -75,21 +75,25 @@ public partial class FirmwareModel(
 
         var kind = image.Kind == FirmwareImageKind.MsV3Factory ? FirmwareKind.Factory : FirmwareKind.Application;
         var version = image.Version!;
+        // Only a factory image records its bootloader: an app-only image has none to compare.
+        var bootloader = kind == FirmwareKind.Factory ? image.BootloaderVersion : null;
 
-        if (await db.FirmwareBuilds.AnyAsync(b => b.DeviceType == deviceType && b.Kind == kind && b.Version == version, ct))
-            return await FailAsync($"{deviceType.ToUpperInvariant()} {kind} {version} is already in the catalog. A changed build has a new version.");
+        if (await db.FirmwareBuilds.AnyAsync(b =>
+                b.DeviceType == deviceType && b.Kind == kind && b.Version == version && b.BootloaderVersion == bootloader, ct))
+            return await FailAsync(
+                $"{deviceType.ToUpperInvariant()} {Describe(kind, version, bootloader)} is already in the catalog. A changed build has a new version.");
 
         // Builds are immutable once uploaded (a different file is a new version), which is why
         // there's no replace: what a unit was flashed with must stay reconstructible.
         await using var stream = Input.File.OpenReadStream();
-        var stored = await storage.SaveAsync(deviceType, kind, version, fileName, stream, ct);
+        var stored = await storage.SaveAsync(deviceType, kind, version, bootloader, fileName, stream, ct);
 
         db.FirmwareBuilds.Add(new FirmwareBuild
         {
             DeviceType = deviceType,
             Kind = kind,
             Version = version,
-            BootloaderVersion = image.BootloaderVersion,
+            BootloaderVersion = bootloader,
             Notes = string.IsNullOrWhiteSpace(Input.Notes) ? null : Input.Notes.Trim(),
             FileName = fileName,
             SizeBytes = stored.SizeBytes,
@@ -98,7 +102,7 @@ public partial class FirmwareModel(
         });
         await db.SaveChangesAsync(ct);
 
-        StatusMessage = $"Read {Describe(kind, version, image.BootloaderVersion)} for {deviceType.ToUpperInvariant()} from {fileName}; added as a draft.";
+        StatusMessage = $"Read {Describe(kind, version, bootloader)} for {deviceType.ToUpperInvariant()} from {fileName}; added as a draft.";
         return RedirectToPage();
     }
 

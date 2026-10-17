@@ -147,7 +147,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
         builder.Entity<FirmwareBuild>(entity =>
         {
-            entity.HasIndex(b => new { b.DeviceType, b.Kind, b.Version }).IsUnique();
+            // A build is identified by its app version and, for a factory image, its bootloader version too:
+            // a bootloader fix ships with an unchanged app. Two filtered indexes, because SQLite treats NULLs
+            // as distinct in a unique index, so one index over all four columns wouldn't catch duplicate
+            // application images (whose bootloader version is null).
+            entity.HasIndex(b => new { b.DeviceType, b.Kind, b.Version })
+                .IsUnique()
+                .HasFilter("\"BootloaderVersion\" IS NULL");
+            entity.HasIndex(b => new { b.DeviceType, b.Kind, b.Version, b.BootloaderVersion })
+                .IsUnique()
+                .HasFilter("\"BootloaderVersion\" IS NOT NULL");
         });
     }
 }

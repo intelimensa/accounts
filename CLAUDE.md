@@ -273,7 +273,9 @@ Firmware developers use their own flash tools; only production-ready builds are 
   version from the bootloader flash range) or `MsV3App` (app only: the header).
 - **Data**: `FirmwareBuilds` (`DeviceType` = the `msv1`/`msv2`/`msv3` firmware family, `Kind`
   Application/Factory, `Version` = the app's, `BootloaderVersion` (Factory only), `Status` Draft/Published/Withdrawn,
-  file name, size, server-computed SHA-256, `StorageKey`). Unique on (DeviceType, Kind, Version). Builds are
+  file name, size, server-computed SHA-256, `StorageKey`). Unique on (DeviceType, Kind, Version, BootloaderVersion), as two
+  filtered unique indexes (SQLite treats NULLs as distinct), so a factory image with a new bootloader and the same app
+  version is its own build; its file is stored under an extra `{bootloaderVersion}/` folder. Builds are
   immutable: a fix is a new version, there is no replace. **Application** = MS-V1/V2's whole firmware, or an MS-V3
   app on its own (USB update). **Factory** = MS-V3 bootloader + app, what a programmer writes to a new unit. There is
   no bootloader-only kind: a bootloader alone looks like any single image to the programmer (Quarry refuses it, see

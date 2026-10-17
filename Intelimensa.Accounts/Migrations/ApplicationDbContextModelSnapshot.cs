@@ -351,7 +351,12 @@ namespace Intelimensa.Accounts.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DeviceType", "Kind", "Version")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"BootloaderVersion\" IS NULL");
+
+                    b.HasIndex("DeviceType", "Kind", "Version", "BootloaderVersion")
+                        .IsUnique()
+                        .HasFilter("\"BootloaderVersion\" IS NOT NULL");
 
                     b.ToTable("FirmwareBuilds");
                 });

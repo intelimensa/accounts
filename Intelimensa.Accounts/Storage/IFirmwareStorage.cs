@@ -6,7 +6,8 @@ namespace Intelimensa.Accounts.Storage;
 public interface IFirmwareStorage
 {
     Task<StoredArtifact> SaveAsync(
-        string deviceType, FirmwareKind kind, string version, string fileName, Stream content, CancellationToken ct);
+        string deviceType, FirmwareKind kind, string version, string? bootloaderVersion, string fileName, Stream content,
+        CancellationToken ct);
 
     Stream OpenRead(string storageKey);
 

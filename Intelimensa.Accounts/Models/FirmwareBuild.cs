@@ -16,7 +16,11 @@ public class FirmwareBuild
 
     public FirmwareKind Kind { get; set; }
 
-    /// <summary>The app's version, as read from the image: what Quarry reports as <c>firmwareVersion</c>. Unique per device type and kind.</summary>
+    /// <summary>
+    /// The app's version, as read from the image: what Quarry reports as <c>firmwareVersion</c>. Unique per
+    /// device type and kind together with <see cref="BootloaderVersion"/>, so a factory image with a new
+    /// bootloader and an unchanged app is a separate build.
+    /// </summary>
     public required string Version { get; set; }
 
     /// <summary>The bootloader's version, read from a <see cref="FirmwareKind.Factory"/> image (what Quarry reports as <c>bootloaderVersion</c>); null otherwise.</summary>
