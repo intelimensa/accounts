@@ -19,12 +19,17 @@
 <div class="feature-card mb-4">
     <h2 class="h5 mb-3">New draft release</h2>
     <form method="post" asp-page-handler="Create" class="row g-2 align-items-end">
-        <div class="col-sm-3">
+        <div class="col-sm-2">
             <label asp-for="Input.Version" class="form-label"></label>
             <input asp-for="Input.Version" class="form-control" placeholder="e.g. 1.0.0" />
             <span asp-validation-for="Input.Version" class="text-danger"></span>
         </div>
-        <div class="col-sm-6">
+        <div class="col-sm-2">
+            <label asp-for="Input.MinimumVersion" class="form-label"></label>
+            <input asp-for="Input.MinimumVersion" class="form-control" placeholder="optional" />
+            <span asp-validation-for="Input.MinimumVersion" class="text-danger"></span>
+        </div>
+        <div class="col-sm-5">
             <label asp-for="Input.Notes" class="form-label"></label>
             <input asp-for="Input.Notes" class="form-control" />
             <span asp-validation-for="Input.Notes" class="text-danger"></span>
@@ -48,6 +53,10 @@
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                 <div>
                     <h2 class="h5 mb-0">v@(release.Version) <span class="badge text-bg-secondary ms-1">@release.Status</span></h2>
+                    @if (release.MinimumVersion is not null)
+                    {
+                        <div class="small">Clients older than <strong>@release.MinimumVersion</strong> must update.</div>
+                    }
                     @if (release.Notes is not null)
                     {
                         <div class="text-muted small">@release.Notes</div>
@@ -76,6 +85,14 @@
                         <div class="flex-grow-1 small">
                             @artifact.FileName &middot; @(artifact.SizeBytes / 1024 / 1024) MB
                             <div class="text-muted text-break">SHA-256 @artifact.Sha256</div>
+                            @if (artifact.Signature is null)
+                            {
+                                <div class="@(Model.SignatureRequired ? "text-danger" : "text-muted")">Unsigned: AxoSync will refuse to install this build.</div>
+                            }
+                            else
+                            {
+                                <div class="text-muted">Signed</div>
+                            }
                         </div>
                     }
                     else
@@ -83,12 +100,13 @@
                         <div class="flex-grow-1 small text-muted">No artifact</div>
                     }
 
-                    @if (release.Status != ReleaseStatus.Withdrawn)
+                    @if (isDraft)
                     {
                         <form method="post" asp-page-handler="Upload" enctype="multipart/form-data" class="d-flex gap-2">
                             <input type="hidden" name="releaseId" value="@release.Id" />
                             <input type="hidden" name="platform" value="@platform" />
                             <input type="file" name="file" class="form-control form-control-sm" required />
+                            <input type="text" name="signature" class="form-control form-control-sm" placeholder="Signature (base64)" @(Model.SignatureRequired ? "required" : "") />
                             <button type="submit" class="btn btn-ia-outline btn-sm">@(artifact is null ? "Upload" : "Replace")</button>
                         </form>
                     }

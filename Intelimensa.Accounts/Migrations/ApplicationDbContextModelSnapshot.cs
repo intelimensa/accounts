@@ -401,6 +401,9 @@ namespace Intelimensa.Accounts.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("MinimumVersion")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Notes")
                         .HasColumnType("TEXT");
 
@@ -440,6 +443,9 @@ namespace Intelimensa.Accounts.Migrations
 
                     b.Property<string>("Sha256")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Signature")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("SizeBytes")

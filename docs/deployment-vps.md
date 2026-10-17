@@ -185,6 +185,11 @@ environment variables — ASP.NET Core maps `Section:Key` to `SECTION__KEY`
 - **`ConnectionStrings:DefaultConnection`** — the default (`Data Source=accounts.db`)
   is a relative path, which resolves against whatever directory the process starts
   in. Point it at the persistent data directory created in step 6 instead.
+- **`Releases:SigningPublicKey`** — the public half of the release-signing key
+  (base64; not a secret, but it must be set). While it is set the server refuses unsigned
+  or wrongly signed builds and won't publish a release with an unsigned artifact. Leaving
+  it unset disables that check, so don't in production. See
+  [`release-publishing.md`](release-publishing.md) for generating the pair.
 
 These go in the systemd unit's `Environment=` lines below (`/etc/systemd/system`
 files are root-owned and not world-readable, which is an acceptable place for
@@ -214,6 +219,7 @@ Environment=Jwt__SigningKey=REPLACE_WITH_GENERATED_BASE64_KEY
 Environment="ConnectionStrings__DefaultConnection=Data Source=/var/www/accounts/data/accounts.db"
 # Uploaded release binaries. Must be outside /var/www/accounts/app (rsync --delete would wipe it).
 Environment=Releases__StoragePath=/var/www/accounts/data/releases
+Environment=Releases__SigningPublicKey=REPLACE_WITH_PUBLIC_KEY_BASE64
 # Firmware hex catalog for the manufacturing station; same rule.
 Environment=Firmware__StoragePath=/var/www/accounts/data/firmware
 
@@ -338,7 +344,15 @@ setrole --account someone@example.com --role Manufacturer --enabled
 
 Unlike `Staff`, JWTs (not just the cookie) carry this role, so a client holding an
 already-issued access token won't see the grant until it refreshes. To revoke
-either role, swap `--enabled` for `--disabled`.
+any of these roles, swap `--enabled` for `--disabled`.
+
+The `Publisher` role (gates `/api/publishing/*`, the API the `publish.sh` release script
+uses) is granted the same way. Give it to a dedicated account for the build machine
+rather than to your own login:
+
+```bash
+setrole --account publisher@example.com --role Publisher --enabled
+```
 
 ## 12. Redeploying after code changes
 

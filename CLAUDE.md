@@ -292,21 +292,37 @@ Firmware developers use their own flash tools; only production-ready builds are 
 
 ## Releases & downloads
 
-Implemented — AxoSync installers are published by hand and downloaded by participants, login-gated.
+Implemented — AxoSync installers are published through the API (or by hand) and fetched by
+participants (login-gated download page) and by AxoSync's own updater. Full contract, signing scheme
+and API reference: [`docs/release-publishing.md`](docs/release-publishing.md) — read it before
+touching any of this.
 
-- **Data**: `Releases` (unique `Version`, `Notes`, `Status` Draft/Published/Withdrawn, `PublishedAt`) and
-  `ReleaseArtifacts` (one per release+platform: file name, size, server-computed SHA-256,
-  `StorageKey`). Platforms are `ReleasePlatform` (`WindowsX64`, `MacOSArm64`, `MacOSX64`, `LinuxX64`).
+- **Data**: `Releases` (unique `Version`, `Notes`, `MinimumVersion`, `Status` Draft/Published/Withdrawn,
+  `PublishedAt`) and `ReleaseArtifacts` (one per release+platform: file name, size, server-computed
+  SHA-256, `Signature`, `StorageKey`). Platforms are `ReleasePlatform` (`WindowsX64`, `MacOSArm64`,
+  `MacOSX64`, `LinuxX64`).
 - **Storage**: `IReleaseStorage` / `LocalReleaseStorage` (`Storage/`) writes to
   `Releases:StoragePath` (default `releases/` under the content root, gitignored) as
   `{version}/{platform}/{file}`. It's never served as a static file, and in production it must live
   outside the rsync-deployed app dir (see `docs/deployment-vps.md`). Object storage later = a new
   `IReleaseStorage` implementation, nothing else changes.
-- **Publishing (staff, manual)**: `/Staff/Releases` — create a draft, upload an artifact per
-  platform (1 GiB cap; re-uploading replaces), Publish/Withdraw. Can't publish with no artifacts;
-  a published release can be withdrawn but not returned to draft; artifacts are only removable
-  from drafts. CI-driven publishing is deliberately not built yet.
-- **Downloading**: `/Download` requires login *and* `AccountPolicy.IsUsable` (active, not
+- **One rule set**: `Publishing/ReleasePublisher` holds the publishing rules (SemVer version format,
+  drafts-only uploads, signature check, no publishing an empty or unsigned release). Both
+  `/Staff/Releases` and the publisher API go through it; don't re-implement them in a page or
+  endpoint. `Publishing/ReleaseVersion` is the SemVer comparer (`1.4.0-beta.1 < 1.4.0`).
+- **Signed builds**: each artifact carries an offline ECDSA P-256 signature over version, platform,
+  SHA-256 and size. The private key never touches this server; the public key is
+  `Releases:SigningPublicKey` here and compiled into AxoSync, which does the real verification. Unset
+  = no enforcement (dev only).
+- **Publishing**: the `Publisher` role (JWT, seeded at startup, granted by `scripts/setrole.sh` like
+  Staff/Manufacturer) drives `/api/publishing/...`: draft, upload artifact + signature, publish /
+  withdraw. The staff page `/Staff/Releases` does the same by hand. Published releases are immutable
+  (a fix is a new version); a published release can be withdrawn but not returned to draft.
+- **Update check** (`Api/Updates/`, any usable account, JWT): `GET /api/releases/latest?platform=&current=`
+  returns the highest published SemVer with a build for that platform (pre-releases only on request),
+  plus `mandatory` when `current` is below that release's `MinimumVersion`; `GET /api/releases/{version}/{platform}/file`
+  streams it. Account usability is re-checked per call.
+- **Downloading by hand**: `/Download` requires login *and* `AccountPolicy.IsUsable` (active, not
   expired). Shows the latest published build per platform (with SHA-256) plus older versions; a
   platform with no published build is greyed out. Files stream from `?handler=File&version=&platform=`
   and only for Published releases. The page is no longer linked from the navbar/landing page.
@@ -315,6 +331,9 @@ Implemented — AxoSync installers are published by hand and downloaded by parti
 
 The solution file is `.slnx` (the newer XML-based format), not `.sln` — there is no `.sln` file
 in this repo.
+- **Gotcha**: `.gitignore` has the Visual Studio template line `[Rr]eleases/`, which (macOS is
+  case-insensitive) silently ignores any new *folder* named `Releases`. That's why the update API
+  lives in `Api/Updates/`. Don't create a folder with that name.
 
 ```bash
 dotnet build Intelimensa.Accounts.slnx

@@ -19,6 +19,13 @@ public class ReleaseArtifact
     /// <summary>Lowercase hex SHA-256 of the file, computed server-side at upload.</summary>
     public required string Sha256 { get; set; }
 
+    /// <summary>
+    /// Base64 DER ECDSA P-256 signature over the release statement (see <c>ReleaseSigning</c>),
+    /// made offline by the publisher's private key. The server stores it and relays it; clients
+    /// verify it against the public key built into AxoSync. Null for artifacts uploaded without one.
+    /// </summary>
+    public string? Signature { get; set; }
+
     /// <summary>Opaque key understood by <c>IReleaseStorage</c> -- not a filesystem path.</summary>
     public required string StorageKey { get; set; }
 

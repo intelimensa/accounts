@@ -13,6 +13,13 @@ public class Release
 
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Clients older than this must update before they can be considered supported; the update
+    /// check reports <c>mandatory</c> for them. Null = the update is optional. Same format as
+    /// <see cref="Version"/>, and never higher than it.
+    /// </summary>
+    public string? MinimumVersion { get; set; }
+
     public ReleaseStatus Status { get; set; } = ReleaseStatus.Draft;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

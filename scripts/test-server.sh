@@ -7,7 +7,7 @@
 # one directory (and only if it carries this script's marker file). Use it instead of starting ad-hoc
 # servers by hand: sharing the dev storage folders is how uploads get lost.
 #
-#   test-server.sh start    build, migrate, seed a test user (Staff + Manufacturer), start on a free port
+#   test-server.sh start    build, migrate, seed a test user (Staff + Manufacturer + Publisher), start on a free port
 #   test-server.sh stop     stop the server and delete its temp directory
 #   test-server.sh status   is it running, where, and the login
 #   test-server.sh logs     tail the server log
@@ -132,7 +132,7 @@ cmd_start() {
     "$url/Account/Register" || { cmd_stop >/dev/null; die "could not register the test user."; }
   sqlite3 "$DIR/accounts.db" "INSERT INTO AspNetUserRoles (UserId, RoleId)
     SELECT u.Id, r.Id FROM AspNetUsers u, AspNetRoles r
-    WHERE u.Email = '$TEST_EMAIL' AND r.Name IN ('Staff', 'Manufacturer');"
+    WHERE u.Email = '$TEST_EMAIL' AND r.Name IN ('Staff', 'Manufacturer', 'Publisher');"
   rm -f "$DIR/jar"
 
   echo
@@ -142,7 +142,7 @@ cmd_start() {
 
 print_info() {
   echo "  URL        $(cat "$URLFILE")"
-  echo "  login      $TEST_EMAIL / $TEST_PASSWORD   (roles: Staff, Manufacturer)"
+  echo "  login      $TEST_EMAIL / $TEST_PASSWORD   (roles: Staff, Manufacturer, Publisher)"
   echo "  data dir   $DIR   (database, releases, firmware-files: all throwaway)"
   echo "  log        $LOGFILE"
   echo "  stop with  scripts/test-server.sh stop"

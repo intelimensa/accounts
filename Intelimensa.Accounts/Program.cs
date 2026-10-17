@@ -1,10 +1,12 @@
 using Intelimensa.Accounts.Api.Auth;
 using Intelimensa.Accounts.Api.Devices;
 using Intelimensa.Accounts.Api.Manufacturing;
+using Intelimensa.Accounts.Api.Updates;
 using Intelimensa.Accounts.Api.Telemetry;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
+using Intelimensa.Accounts.Publishing;
 using Intelimensa.Accounts.Security;
 using Intelimensa.Accounts.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -29,6 +31,8 @@ builder.Services.AddRazorPages(options =>
 
 builder.Services.Configure<ReleaseStorageOptions>(builder.Configuration.GetSection("Releases"));
 builder.Services.AddSingleton<IReleaseStorage, LocalReleaseStorage>();
+builder.Services.Configure<ReleasePublishingOptions>(builder.Configuration.GetSection("Releases"));
+builder.Services.AddScoped<ReleasePublisher>();
 builder.Services.Configure<FirmwareStorageOptions>(builder.Configuration.GetSection("Firmware"));
 builder.Services.AddSingleton<IFirmwareStorage, LocalFirmwareStorage>();
 
@@ -114,6 +118,18 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Manufacturer", policy => policy
         .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
         .RequireRole("Manufacturer"));
+
+    // AxoSync's update check and installer download (JWT): any signed-in account; the endpoints
+    // additionally require it to still be usable.
+    options.AddPolicy("ReleaseClient", policy => policy
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser());
+
+    // The publish script's API (JWT). Its own role, so publishing builds is neither Staff's nor a
+    // Manufacturer's job and can be given to a build machine's account alone.
+    options.AddPolicy("Publisher", policy => policy
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireRole("Publisher"));
 });
 
 var app = builder.Build();
@@ -123,7 +139,7 @@ var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var role in new[] { "Staff", "Manufacturer" })
+    foreach (var role in new[] { "Staff", "Manufacturer", "Publisher" })
         if (!await roleManager.RoleExistsAsync(role))
             await roleManager.CreateAsync(new IdentityRole(role));
 }
@@ -149,6 +165,7 @@ app.MapRazorPages()
 app.MapAuthEndpoints();
 app.MapDeviceEndpoints();
 app.MapManufacturingEndpoints();
+app.MapReleaseEndpoints();
 app.MapTelemetryEndpoints();
 
 app.Run();
