@@ -129,6 +129,10 @@ config from their own running app (for example via a memory dump). No key-delive
 that. The doc's threat-model section covers the mitigations, and explains why moving the pipeline
 onto the device isn't viable on current hardware.
 
+## The JSON API's contract with its clients
+
+`Api/*/…Contracts.cs` are the wire shapes. They are pinned by `testdata/api-vectors.json` (generator `scripts/gen-api-vectors.py`), which `ApiVectorTests` round-trips through these records with ASP.NET's JSON options, and which MindStoneQuarry's client and AxoSync's hand-written client are tested against (copies, kept identical by `./sync-vectors.sh --fix` in the workspace root). **Changing a record or its JSON (a field, a name, an enum, a date format) means changing the generator first,** regenerating, syncing the copies and updating the clients; the tests say which one disagrees. Error bodies differ by family (a bare JSON string for manufacturing and devices, `{"error": …}` for publishing and updates, ProblemDetails for a 503); the fixture records that too.
+
 ## Auth flow
 
 Implemented — `Intelimensa.Accounts/Api/Auth/AuthEndpoints.cs` (`MapAuthEndpoints`) and

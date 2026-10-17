@@ -1,0 +1,484 @@
+{
+  "contract": "intelimensa-accounts-api-v1",
+  "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check). Owner: accounts repo (testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the wire. The server must read every `request` into its record and write every `response` back out identically (nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read every `response`. Update-check examples carry a `context` (the client's platform, version and trusted key) and the `expect`ed result of AxoSync's check. `tolerated`: JSON a client must still read. `errors`: bodies a client may meet. `rekeyReasons`: the reasons a station may send; anything else is refused.",
+  "rekeyReasons": [
+    "Reflash",
+    "Rework"
+  ],
+  "examples": [
+    {
+      "name": "login-request",
+      "type": "LoginRequest",
+      "direction": "request",
+      "note": "",
+      "json": {
+        "email": "station@example.com",
+        "password": "correct-horse-battery"
+      }
+    },
+    {
+      "name": "refresh-request",
+      "type": "RefreshRequest",
+      "direction": "request",
+      "note": "also the body of /api/auth/logout",
+      "json": {
+        "refreshToken": "r3fr3sh-t0k3n-0001"
+      }
+    },
+    {
+      "name": "token-response",
+      "type": "TokenResponse",
+      "direction": "response",
+      "note": "",
+      "json": {
+        "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "accessTokenExpiresAt": "2026-10-18T10:15:00+00:00",
+        "refreshToken": "r3fr3sh-t0k3n-0002",
+        "refreshTokenExpiresAt": "2026-11-17T10:00:00+00:00",
+        "isStudyParticipant": false
+      }
+    },
+    {
+      "name": "token-response-study-participant",
+      "type": "TokenResponse",
+      "direction": "response",
+      "note": "",
+      "json": {
+        "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIyIn0.c2ln",
+        "accessTokenExpiresAt": "2026-10-18T10:15:00+00:00",
+        "refreshToken": "r3fr3sh-t0k3n-0003",
+        "refreshTokenExpiresAt": "2026-11-17T10:00:00+00:00",
+        "isStudyParticipant": true
+      }
+    },
+    {
+      "name": "options-response",
+      "type": "ManufacturingOptionsResponse",
+      "direction": "response",
+      "note": "Initial is the server's own choice for a held serial and is never offered; Relabel was retired",
+      "json": {
+        "products": [
+          {
+            "deviceType": "msv1",
+            "productCode": "MSV1"
+          },
+          {
+            "deviceType": "msv3",
+            "productCode": "MSV3"
+          }
+        ],
+        "regions": [
+          {
+            "code": "G",
+            "description": "Global (no regional variant)"
+          }
+        ],
+        "rekeyReasons": [
+          "Reflash",
+          "Rework"
+        ]
+      }
+    },
+    {
+      "name": "reserve-request-ms-v3",
+      "type": "ReserveUnitRequest",
+      "direction": "request",
+      "note": "",
+      "json": {
+        "deviceType": "msv3",
+        "region": "G",
+        "firmwareVersion": "0.30+9183eec",
+        "bootloaderVersion": "0.53+797af87"
+      }
+    },
+    {
+      "name": "reserve-request-no-bootloader",
+      "type": "ReserveUnitRequest",
+      "direction": "request",
+      "note": "a unit without a bootloader leaves the field out",
+      "json": {
+        "deviceType": "msv1",
+        "region": "G",
+        "firmwareVersion": "0.5+f34ea83"
+      }
+    },
+    {
+      "name": "issued-unit-response",
+      "type": "IssuedUnitResponse",
+      "direction": "response",
+      "note": "returned by reserve and rekey; the only time the plaintext code is exposed",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "serialNumberLabel": "MSV3-G01S-ATKX",
+        "registrationCode": "7KQ49XT2AM",
+        "registrationCodeLabel": "7KQ49-XT2AM",
+        "deviceType": "msv3",
+        "reservedAt": "2026-10-18T09:30:00+00:00"
+      }
+    },
+    {
+      "name": "confirm-request",
+      "type": "ConfirmUnitRequest",
+      "direction": "request",
+      "note": "",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "registrationCode": "7KQ49XT2AM",
+        "firmwareVersion": "0.30+9183eec",
+        "bootloaderVersion": "0.53+797af87"
+      }
+    },
+    {
+      "name": "void-request",
+      "type": "UnitRequest",
+      "direction": "request",
+      "note": "",
+      "json": {
+        "serialNumber": "MSV3G01SATKX"
+      }
+    },
+    {
+      "name": "rekey-request",
+      "type": "RekeyUnitRequest",
+      "direction": "request",
+      "note": "the reason is a name, not a number",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "reason": "Reflash",
+        "note": "identity lost in a programmer flash",
+        "firmwareVersion": "0.30+9183eec",
+        "bootloaderVersion": "0.53+797af87"
+      }
+    },
+    {
+      "name": "rekey-request-no-note",
+      "type": "RekeyUnitRequest",
+      "direction": "request",
+      "note": "",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "reason": "Rework",
+        "note": null,
+        "firmwareVersion": "0.30+9183eec"
+      }
+    },
+    {
+      "name": "firmware-write-request",
+      "type": "FirmwareWriteRequest",
+      "direction": "request",
+      "note": "",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "firmwareVersion": "0.31+aaaaaaa",
+        "note": null
+      }
+    },
+    {
+      "name": "unit-response-reserved",
+      "type": "UnitResponse",
+      "direction": "response",
+      "note": "status is a number: 0 Reserved, 1 Manufactured, 2 Voided",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "serialNumberLabel": "MSV3-G01S-ATKX",
+        "deviceType": "msv3",
+        "status": 0,
+        "firmwareVersion": "0.30+9183eec",
+        "bootloaderVersion": "0.53+797af87",
+        "manufacturedAt": null,
+        "firmwareUpdatedAt": null
+      }
+    },
+    {
+      "name": "unit-response-manufactured",
+      "type": "UnitResponse",
+      "direction": "response",
+      "note": "",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "serialNumberLabel": "MSV3-G01S-ATKX",
+        "deviceType": "msv3",
+        "status": 1,
+        "firmwareVersion": "0.30+9183eec",
+        "bootloaderVersion": "0.53+797af87",
+        "manufacturedAt": "2026-10-18T10:00:00+00:00",
+        "firmwareUpdatedAt": "2026-10-18T10:00:00+00:00"
+      }
+    },
+    {
+      "name": "unit-response-ms-v2",
+      "type": "UnitResponse",
+      "direction": "response",
+      "note": "no bootloader: the field is null",
+      "json": {
+        "serialNumber": "MSV2G0000018",
+        "serialNumberLabel": "MSV2-G000-0018",
+        "deviceType": "msv2",
+        "status": 1,
+        "firmwareVersion": "0.5+f34ea83",
+        "bootloaderVersion": null,
+        "manufacturedAt": "2026-10-18T10:00:00+00:00",
+        "firmwareUpdatedAt": "2026-10-18T10:00:00+00:00"
+      }
+    },
+    {
+      "name": "unit-response-voided",
+      "type": "UnitResponse",
+      "direction": "response",
+      "note": "",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "serialNumberLabel": "MSV3-G01S-ATKX",
+        "deviceType": "msv3",
+        "status": 2,
+        "firmwareVersion": "0.30+9183eec",
+        "bootloaderVersion": "0.53+797af87",
+        "manufacturedAt": "2026-10-18T10:00:00+00:00",
+        "firmwareUpdatedAt": "2026-10-18T10:00:00+00:00"
+      }
+    },
+    {
+      "name": "unit-response-held-serial",
+      "type": "UnitResponse",
+      "direction": "response",
+      "note": "a held serial has no code and no firmware version yet: the version is null",
+      "json": {
+        "serialNumber": "MSV3G0000018",
+        "serialNumberLabel": "MSV3-G000-0018",
+        "deviceType": "msv3",
+        "status": 0,
+        "firmwareVersion": null,
+        "bootloaderVersion": null,
+        "manufacturedAt": null,
+        "firmwareUpdatedAt": null
+      }
+    },
+    {
+      "name": "update-up-to-date",
+      "type": "UpdateCheckResponse",
+      "direction": "response",
+      "note": "a caller that is current, or has no build for its platform",
+      "json": {
+        "updateAvailable": false,
+        "mandatory": false,
+        "version": null,
+        "notes": null,
+        "minimumVersion": null,
+        "publishedAt": null,
+        "artifact": null
+      },
+      "context": {
+        "platform": "MacOSArm64",
+        "trustedPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9HDI/DulbJalYHMcDbeFY8BvNa8hIMZ5MiqE5LaDQBHbAEtFEO1dbXAEoggaR9PSsFEdQX3e63nGR0p4tIveyw==",
+        "current": "1.4.2"
+      },
+      "expect": {
+        "status": "UpToDate"
+      }
+    },
+    {
+      "name": "update-available",
+      "type": "UpdateCheckResponse",
+      "direction": "response",
+      "note": "signed with the key of release-signing-vectors.json",
+      "json": {
+        "updateAvailable": true,
+        "mandatory": false,
+        "version": "1.4.2",
+        "notes": "Fixes the cursor drift.",
+        "minimumVersion": null,
+        "publishedAt": "2026-10-17T12:00:00+00:00",
+        "artifact": {
+          "fileName": "AxoSyncSetup-1.4.2.dmg",
+          "sizeBytes": 123456789,
+          "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498",
+          "signature": "MEYCIQCG0+/fzIfR9AZp4e+anfiT0kP7ZE3ZSJyk7S984PcciAIhAPJ3VmUbV6DPeOUpw/Uj3wF5JbNqnyLcCtNOOyv5Q3Sc",
+          "downloadUrl": "api/releases/1.4.2/MacOSArm64/file"
+        }
+      },
+      "context": {
+        "platform": "MacOSArm64",
+        "trustedPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9HDI/DulbJalYHMcDbeFY8BvNa8hIMZ5MiqE5LaDQBHbAEtFEO1dbXAEoggaR9PSsFEdQX3e63nGR0p4tIveyw==",
+        "current": "1.4.1"
+      },
+      "expect": {
+        "status": "Available",
+        "version": "1.4.2",
+        "mandatory": false,
+        "notes": "Fixes the cursor drift.",
+        "fileName": "AxoSyncSetup-1.4.2.dmg",
+        "sizeBytes": 123456789,
+        "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498"
+      }
+    },
+    {
+      "name": "update-available-mandatory",
+      "type": "UpdateCheckResponse",
+      "direction": "response",
+      "note": "the caller is below minimumVersion",
+      "json": {
+        "updateAvailable": true,
+        "mandatory": true,
+        "version": "1.4.2",
+        "notes": null,
+        "minimumVersion": "1.4.0",
+        "publishedAt": "2026-10-17T12:00:00+00:00",
+        "artifact": {
+          "fileName": "AxoSyncSetup-1.4.2.dmg",
+          "sizeBytes": 123456789,
+          "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498",
+          "signature": "MEYCIQCG0+/fzIfR9AZp4e+anfiT0kP7ZE3ZSJyk7S984PcciAIhAPJ3VmUbV6DPeOUpw/Uj3wF5JbNqnyLcCtNOOyv5Q3Sc",
+          "downloadUrl": "api/releases/1.4.2/MacOSArm64/file"
+        }
+      },
+      "context": {
+        "platform": "MacOSArm64",
+        "trustedPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9HDI/DulbJalYHMcDbeFY8BvNa8hIMZ5MiqE5LaDQBHbAEtFEO1dbXAEoggaR9PSsFEdQX3e63nGR0p4tIveyw==",
+        "current": "1.3.0"
+      },
+      "expect": {
+        "status": "Available",
+        "version": "1.4.2",
+        "mandatory": true,
+        "notes": null,
+        "fileName": "AxoSyncSetup-1.4.2.dmg",
+        "sizeBytes": 123456789,
+        "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498"
+      }
+    },
+    {
+      "name": "update-offer-not-newer",
+      "type": "UpdateCheckResponse",
+      "direction": "response",
+      "note": "a client refuses an offer that isn't newer than what it runs (a replayed old build)",
+      "json": {
+        "updateAvailable": true,
+        "mandatory": false,
+        "version": "1.4.2",
+        "notes": null,
+        "minimumVersion": null,
+        "publishedAt": "2026-10-17T12:00:00+00:00",
+        "artifact": {
+          "fileName": "AxoSyncSetup-1.4.2.dmg",
+          "sizeBytes": 123456789,
+          "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498",
+          "signature": "MEYCIQCG0+/fzIfR9AZp4e+anfiT0kP7ZE3ZSJyk7S984PcciAIhAPJ3VmUbV6DPeOUpw/Uj3wF5JbNqnyLcCtNOOyv5Q3Sc",
+          "downloadUrl": "api/releases/1.4.2/MacOSArm64/file"
+        }
+      },
+      "context": {
+        "platform": "MacOSArm64",
+        "trustedPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9HDI/DulbJalYHMcDbeFY8BvNa8hIMZ5MiqE5LaDQBHbAEtFEO1dbXAEoggaR9PSsFEdQX3e63nGR0p4tIveyw==",
+        "current": "1.4.2"
+      },
+      "expect": {
+        "status": "Untrusted"
+      }
+    },
+    {
+      "name": "update-offer-unsigned",
+      "type": "UpdateCheckResponse",
+      "direction": "response",
+      "note": "a build without a signature is never installed",
+      "json": {
+        "updateAvailable": true,
+        "mandatory": false,
+        "version": "1.4.2",
+        "notes": null,
+        "minimumVersion": null,
+        "publishedAt": "2026-10-17T12:00:00+00:00",
+        "artifact": {
+          "fileName": "AxoSyncSetup-1.4.2.dmg",
+          "sizeBytes": 123456789,
+          "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498",
+          "signature": null,
+          "downloadUrl": "api/releases/1.4.2/MacOSArm64/file"
+        }
+      },
+      "context": {
+        "platform": "MacOSArm64",
+        "trustedPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9HDI/DulbJalYHMcDbeFY8BvNa8hIMZ5MiqE5LaDQBHbAEtFEO1dbXAEoggaR9PSsFEdQX3e63nGR0p4tIveyw==",
+        "current": "1.4.1"
+      },
+      "expect": {
+        "status": "Untrusted"
+      }
+    },
+    {
+      "name": "update-offer-other-server-download",
+      "type": "UpdateCheckResponse",
+      "direction": "response",
+      "note": "the bearer token must never go to another server",
+      "json": {
+        "updateAvailable": true,
+        "mandatory": false,
+        "version": "1.4.2",
+        "notes": null,
+        "minimumVersion": null,
+        "publishedAt": "2026-10-17T12:00:00+00:00",
+        "artifact": {
+          "fileName": "AxoSyncSetup-1.4.2.dmg",
+          "sizeBytes": 123456789,
+          "sha256": "3c4b36dbae8685ed2b450249061e78ee2db77f7f2d4287124bc25dd376c4a498",
+          "signature": "MEYCIQCG0+/fzIfR9AZp4e+anfiT0kP7ZE3ZSJyk7S984PcciAIhAPJ3VmUbV6DPeOUpw/Uj3wF5JbNqnyLcCtNOOyv5Q3Sc",
+          "downloadUrl": "https://evil.example.net/AxoSyncSetup-1.4.2.dmg"
+        }
+      },
+      "context": {
+        "platform": "MacOSArm64",
+        "trustedPublicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9HDI/DulbJalYHMcDbeFY8BvNa8hIMZ5MiqE5LaDQBHbAEtFEO1dbXAEoggaR9PSsFEdQX3e63nGR0p4tIveyw==",
+        "current": "1.4.1"
+      },
+      "expect": {
+        "status": "Untrusted"
+      }
+    }
+  ],
+  "tolerated": [
+    {
+      "name": "token-response-z-dates-extra-field-any-order",
+      "type": "TokenResponse",
+      "json": {
+        "isStudyParticipant": false,
+        "refreshTokenExpiresAt": "2026-11-17T10:00:00.1234567Z",
+        "refreshToken": "r3fr3sh-t0k3n-0004",
+        "accessTokenExpiresAt": "2026-10-18T10:15:00Z",
+        "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "somethingNew": {
+          "added": "later"
+        }
+      },
+      "expect": {
+        "accessToken": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "refreshToken": "r3fr3sh-t0k3n-0004",
+        "accessTokenExpiresAt": "2026-10-18T10:15:00+00:00"
+      }
+    }
+  ],
+  "errors": [
+    {
+      "family": "manufacturing, devices, telemetry",
+      "status": 404,
+      "bodyJson": "Unknown serial number.",
+      "note": "a bare JSON string; ReadAsync in Quarry's AccountsClient takes it as the message"
+    },
+    {
+      "family": "manufacturing",
+      "status": 503,
+      "bodyJson": {
+        "status": 503,
+        "title": "Service Unavailable",
+        "detail": "Try again shortly."
+      },
+      "note": "ProblemDetails, for the few cases that use Results.Problem"
+    },
+    {
+      "family": "releases and publishing",
+      "status": 400,
+      "bodyJson": {
+        "error": "platform is required."
+      },
+      "note": "an object with `error`; publish.sh reads it"
+    }
+  ]
+}
