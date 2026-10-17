@@ -189,7 +189,12 @@ environment variables — ASP.NET Core maps `Section:Key` to `SECTION__KEY`
   (base64; not a secret, but it must be set). While it is set the server refuses unsigned
   or wrongly signed builds and won't publish a release with an unsigned artifact. Leaving
   it unset disables that check, so don't in production. See
-  [`release-publishing.md`](release-publishing.md) for generating the pair.
+  [`release-publishing.md`](release-publishing.md) for generating the pair. **Production
+  currently uses the YubiKey's PIV slot 82 key** (certificate "AxoSync release signing (test)",
+  ECDSA P-256). Its public key, exported with `ykman piv keys export 82 -` and converted with
+  `openssl pkey -pubin -outform DER | base64`, is
+  `MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7+bra9jiGPJu366y6bBZTivhOE+16lef4JDUnSpPwN28KQZC+Sp0WXcmWDW5egW1S4RniLgOdhyI3MZNYeyXXA==`.
+  It's a test key: replacing it means changing this setting *and* the key compiled into AxoSync.
 
 These go in the systemd unit's `Environment=` lines below (`/etc/systemd/system`
 files are root-owned and not world-readable, which is an acceptable place for
@@ -207,6 +212,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/var/www/accounts/app
+# Use the path `which dotnet` prints; on the production VPS it is /usr/local/bin/dotnet.
 ExecStart=/usr/bin/dotnet /var/www/accounts/app/Intelimensa.Accounts.dll
 Restart=always
 RestartSec=5
@@ -221,7 +227,7 @@ Environment="ConnectionStrings__DefaultConnection=Data Source=/var/www/accounts/
 Environment=Releases__StoragePath=/var/www/accounts/data/releases
 Environment=Releases__SigningPublicKey=REPLACE_WITH_PUBLIC_KEY_BASE64
 # Firmware hex catalog for the manufacturing station; same rule.
-Environment=Firmware__StoragePath=/var/www/accounts/data/firmware
+Environment=Firmware__StoragePath=/var/www/accounts/data/firmware-files
 
 SyslogIdentifier=intelimensa-accounts
 
@@ -237,6 +243,10 @@ rediscovering:
   calls `.UseSystemd()`, so that signal never arrives. The app itself starts fine
   (you'll see "Application started" in the logs), but systemd kills it ~90s later
   as a timeout anyway. `Type=simple` doesn't wait for any such signal.
+- **Every setting line needs the `Environment=` prefix.** A bare `Firmware__StoragePath=...`
+  line is ignored by systemd with no error at start-up, and the app silently falls back to its
+  default (a folder inside the app directory). Check what the running app actually got with
+  `systemctl show -p Environment intelimensa-accounts`.
 - **Quote any `Environment=` value that contains a space.** systemd's `Environment=`
   splits on whitespace unless the whole `KEY=VALUE` assignment is wrapped in double
   quotes. The connection string's `Data Source=...` has a space in it — without the
@@ -246,7 +256,9 @@ rediscovering:
   .ArgumentException: Format of the initialization string does not conform to
   specification`.
 
-Enable and start it:
+Enable and start it. (Until the service goes public, production is deliberately left
+**disabled**: it's started and stopped by hand and doesn't come back after a reboot. In that
+case use `start` instead of `enable --now`.)
 
 ```bash
 sudo systemctl daemon-reload
@@ -368,6 +380,50 @@ scripts/deploy.sh deploy     # asks before touching the server
 scripts/deploy.sh status
 scripts/deploy.sh rollback   # previous version back, if the new one misbehaves
 ```
+
+### Checklist
+
+**Once per machine.** The script connects as `harald@accounts.intelimensa.com`, so your
+`~/.ssh/config` must give that name the server key, for example:
+
+```
+Host accounts-vps accounts.intelimensa.com
+    HostName 94.176.105.208
+    User harald
+    IdentityFile ~/.ssh/intelimensa-accounts-deploy
+```
+
+Without the second name on the `Host` line, ssh doesn't offer that key and the connection is
+refused (`Permission denied (publickey)`). Check with `ssh harald@accounts.intelimensa.com true`.
+
+**Every deploy:**
+
+1. **Commit.** `deploy` refuses uncommitted changes (`--allow-dirty` overrides, and the deployed
+   version is then marked as having uncommitted changes).
+2. **Unlock the ssh key** if it has a passphrase and you've rebooted since:
+   `ssh-add ~/.ssh/intelimensa-accounts-deploy`.
+3. **`scripts/deploy.sh plan`.** Read-only. Shows the deployed commit, the commit to deploy and
+   the pending migrations, and checks the server (`sqlite3`, `curl`, `rsync` installed, no data
+   inside the app directory).
+4. **Check whether the new version needs a setting the server doesn't have yet.** Look through
+   the changes since the deployed commit for new configuration (new `Environment=` lines in step
+   8, new options in `appsettings.json` without a usable default, new storage paths). Add them to
+   the unit *before* deploying, on the server:
+
+   ```bash
+   sudo systemctl edit --full intelimensa-accounts   # add the Environment= line(s)
+   sudo systemctl daemon-reload
+   systemctl show -p Environment intelimensa-accounts  # confirm they're really there
+   ```
+
+   The deploy restarts the service, so the new settings take effect with the new version.
+5. **`scripts/deploy.sh deploy`, in your own terminal.** It asks for confirmation, and `sudo` on
+   the server asks for your password. It must be a real terminal, because of those prompts.
+6. **Check:** `scripts/deploy.sh status`, then open `https://accounts.intelimensa.com`.
+7. **While the service is kept disabled** (not public yet): the deploy *starts* it, so stop it
+   again when you've finished looking: `sudo systemctl stop intelimensa-accounts`.
+
+### What the script does
 
 What `deploy` does, in order:
 
