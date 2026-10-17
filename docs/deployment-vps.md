@@ -257,10 +257,14 @@ journalctl -u intelimensa-accounts -f   # tail logs
 
 ## 9. Apply EF Core migrations against the production database
 
-Since the SDK isn't on the server, run migrations from your dev machine against the
-production connection string over SSH, or generate a SQL script and apply it
-remotely — the script route avoids needing the dev machine to reach the VPS's
-loopback-bound DB file directly:
+**This step is for the first deploy only**, when the database doesn't exist yet. After
+that, `scripts/deploy.sh` applies migrations (step 12). Don't re-run the command below
+against an existing database: it scripts every migration from the first one, so it
+fails on tables that already exist, and `sqlite3` carries on past errors unless told
+not to (`-bail`), which can leave a migration half-applied.
+
+Since the SDK isn't on the server, generate a SQL script on your dev machine and apply
+it remotely:
 
 ```bash
 # From Intelimensa.Accounts/ locally
@@ -342,10 +346,6 @@ manufacturing station app) works the same way:
 setrole --account someone@example.com --role Manufacturer --enabled
 ```
 
-Unlike `Staff`, JWTs (not just the cookie) carry this role, so a client holding an
-already-issued access token won't see the grant until it refreshes. To revoke
-any of these roles, swap `--enabled` for `--disabled`.
-
 The `Publisher` role (gates `/api/publishing/*`, the API the `publish.sh` release script
 uses) is granted the same way. Give it to a dedicated account for the build machine
 rather than to your own login:
@@ -354,21 +354,52 @@ rather than to your own login:
 setrole --account publisher@example.com --role Publisher --enabled
 ```
 
+Unlike `Staff`, JWTs (not just the cookie) carry this role, so a client holding an
+already-issued access token won't see the grant until it refreshes. To revoke
+any of these roles, swap `--enabled` for `--disabled`.
+
 ## 12. Redeploying after code changes
 
-```bash
-# Local
-cd Intelimensa.Accounts
-dotnet publish -c Release -o ./publish
-rsync -avz --delete --exclude 'accounts.db' ./publish/ harald@accounts.intelimensa.com:/var/www/accounts/app/
+Use `scripts/deploy.sh` from your dev machine, on a committed checkout:
 
-# Server
-ssh harald@accounts.intelimensa.com
-sudo systemctl restart intelimensa-accounts
+```bash
+scripts/deploy.sh plan       # read-only: what is deployed, what would change, pending migrations
+scripts/deploy.sh deploy     # asks before touching the server
+scripts/deploy.sh status
+scripts/deploy.sh rollback   # previous version back, if the new one misbehaves
 ```
 
-If the change includes a new EF Core migration, generate and apply a new
-`migrate.sql` (step 9) before restarting the service.
+What `deploy` does, in order:
+
+1. Refuses if there are uncommitted changes (`--allow-dirty` overrides), if the server has run a
+   migration this checkout doesn't have (you'd be deploying older code), or if the app directory
+   holds data (a database, `releases/`, `firmware-files/`) that switching versions would lose.
+2. Publishes a Release build and uploads it to `/var/www/accounts/app.new`, next to the running
+   version. The service is still up.
+3. Compares the server's `__EFMigrationsHistory` with `Migrations/` and generates a SQL script for
+   **only the migrations the server hasn't run**.
+4. Stops the service and backs the database up to
+   `/var/www/accounts/backups/accounts.pre-deploy-<UTC time>.db`.
+5. Applies the script with `sqlite3 -bail`. If anything fails, it restores the backup and starts
+   the old version again; nothing is left half-applied.
+6. Renames `app` to `app.prev` and `app.new` to `app`, starts the service and waits up to 30
+   seconds for it to answer on `http://127.0.0.1:5000/`. If it doesn't, it prints the service log
+   and stops there, leaving the new version in place for you to look at or roll back.
+
+`rollback` puts `app.prev` back. If the deploy it undoes changed the schema, it also restores the
+pre-deploy database, because old code can't run against the new schema: **anything written since
+that deploy is then gone from the live database** (the replaced database is kept in `backups/` as
+`accounts.pre-rollback-<time>.db`). If the deploy had no migrations, only the code goes back. Only
+one previous version is kept, so a rollback can't be repeated.
+
+Notes:
+
+- `sudo` on the server is used for `systemctl` and `journalctl` and may ask for your password once
+  per run.
+- The script writes `deploy-info.txt` (commit and time) into the app directory; `status` reads it.
+- Pre-deploy backups are not pruned. Delete old ones from `/var/www/accounts/backups` now and then.
+- The server, paths and service name are the defaults at the top of the script
+  (`DEPLOY_HOST`, `DEPLOY_ROOT`, `DEPLOY_SERVICE`, `DEPLOY_HEALTH_URL` override them).
 
 ## 13. Backups
 
@@ -450,9 +481,11 @@ obscurity" is worth doing even for a short-lived test deploy.
 
 - **DNS provider access** — confirm who/where `intelimensa.com` DNS is managed and
   that you (or whoever handles it) can add the `accounts` A/AAAA record.
-- **`AllowedHosts`** in `appsettings.json` is currently `"*"` — fine behind Nginx
-  terminating on a known hostname, but worth tightening to
-  `accounts.intelimensa.com` once the domain is live, to reject stray Host headers.
+- **`AllowedHosts`** — `appsettings.json`'s `"*"` stays as the dev/test default;
+  `Intelimensa.Accounts/appsettings.Production.json` overrides it to
+  `accounts.intelimensa.com` for the Production environment only (ASP.NET Core
+  layers `appsettings.{Environment}.json` automatically — no systemd change
+  needed, since this isn't a secret). Resolved once the real domain went live.
 - **Monitoring/alerting** isn't covered above — at minimum, consider a simple
   uptime check (e.g. an external ping service) against
   `https://accounts.intelimensa.com`, since `systemctl enable --now` + `Restart=always`
