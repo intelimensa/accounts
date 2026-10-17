@@ -8,9 +8,9 @@
 
 <h1 class="h3 mb-3">Manufacturing</h1>
 <p class="text-muted">
-    Reserve serials and registration codes, then flash each unit and confirm it with the code read
-    back from the unit. A unit can only be registered by a participant once it is
-    <strong>Manufactured</strong>.
+    Allocate serials ahead of time for the casings, then rekey each one when its board is flashed
+    (that issues its registration code) and confirm it with the code read back from the unit. A unit
+    can only be registered by a participant once it is <strong>Manufactured</strong>.
 </p>
 
 @if (Model.StatusMessage is not null)
@@ -26,7 +26,7 @@
 {
     <div class="alert alert-success" role="alert">
         <strong>Held @Model.Held.Count serial(s):</strong>
-        <span class="font-monospace">@string.Join(", ", Model.Held)</span>
+        <pre class="font-monospace mb-0 mt-1">@string.Join("\n", Model.Held)</pre>
     </div>
 }
 
@@ -48,8 +48,9 @@
     <div class="feature-card mb-4 border-warning">
         <h2 class="h5">@Model.IssuedHeading</h2>
         <p class="text-danger small mb-2">
-            These registration codes are shown <strong>once</strong>. They can't be recovered later; a lost
-            code means a rekey. Download or print them now.
+            These registration codes are shown <strong>once</strong>, for writing into the unit when it is
+            flashed. They can't be recovered later; a lost code means a rekey. A code is never printed on
+            the unit or its packaging, so don't keep a copy once the unit is confirmed.
         </p>
         <table class="table table-sm align-middle" id="issued-table">
             <thead><tr><th>Serial</th><th>Registration code</th><th>Type</th></tr></thead>
@@ -70,7 +71,11 @@
 }
 
 <div class="feature-card mb-4">
-    <h2 class="h5 mb-3">Reserve units</h2>
+    <h2 class="h5 mb-1">Reserve units</h2>
+    <p class="text-muted small">
+        Issues a new serial <em>and</em> its registration code at once, for a unit you are about to flash
+        whose casing isn't printed yet. For casings printed ahead of time, allocate serials below instead.
+    </p>
     <form method="post" asp-page-handler="Reserve" class="row g-2 align-items-end">
         <div class="col-sm-2">
             <label class="form-label" for="r-type">Device type</label>
@@ -104,13 +109,46 @@
 </div>
 
 <div class="feature-card mb-4">
-    <h2 class="h5 mb-1">Hold serials</h2>
+    <h2 class="h5 mb-1">Allocate serials in advance</h2>
     <p class="text-muted small">
-        For serials that already exist outside the server (e.g. printed on casings). Only the serial is
-        reserved, so it can never be issued to another unit: <strong>no registration code and no firmware
+        Gets new serials to print on casings before the boards are ready. Only the serial is reserved, so
+        it can never be issued to another unit: <strong>no registration code and no firmware
         yet</strong>. When you flash the unit, <strong>rekey</strong> it to get its first code, then
-        confirm. A serial must be valid (its last character is a check character), use a configured
-        product and region, and not have been issued before. One per line; dashes are optional.
+        confirm.
+    </p>
+    <form method="post" asp-page-handler="AllocateSerials" class="row g-2 align-items-end mb-4">
+        <div class="col-sm-2">
+            <label class="form-label" for="a-type">Device type</label>
+            <select id="a-type" name="deviceType" class="form-select">
+                @foreach (var type in Model.DeviceTypes)
+                {
+                    <option value="@type">@type.ToUpperInvariant()</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label" for="a-region">Region</label>
+            <select id="a-region" name="region" class="form-select">
+                @foreach (var region in Model.Regions)
+                {
+                    <option value="@region">@region</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label" for="a-count">Count</label>
+            <input id="a-count" name="count" type="number" min="1" max="200" value="1" class="form-control" required />
+        </div>
+        <div class="col-sm-3">
+            <button type="submit" class="btn btn-ia-primary w-100">Allocate serials</button>
+        </div>
+    </form>
+
+    <h3 class="h6 mb-1">Hold serials you already have</h3>
+    <p class="text-muted small">
+        For serials that already exist outside the server. Held the same way as above. A serial must be
+        valid (its last character is a check character), use a configured product and region, and not
+        have been issued before. One per line; dashes are optional.
     </p>
     <form method="post" asp-page-handler="HoldSerials" class="row g-2 align-items-end">
         <div class="col-md-8">

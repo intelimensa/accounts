@@ -58,17 +58,8 @@ public class UnitProvisioning(
     public async Task<ProvisionResult<IssuedUnit>> ReserveAsync(
         string userId, string? deviceTypeInput, string? regionInput, string? firmwareVersion, string? bootloaderVersion)
     {
-        var deviceType = deviceTypeInput?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (!options.Value.ProductCodes.TryGetValue(deviceType, out var productCode))
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest, $"Unknown device type '{deviceTypeInput}'.");
-
-        var region = regionInput?.Trim().ToUpperInvariant() ?? string.Empty;
-        if (region.Length == 0)
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest,
-                $"Region is required. Allowed: {string.Join(", ", options.Value.RegionCodes.Keys.Order())}.");
-        if (!options.Value.RegionCodes.ContainsKey(region))
-            return Fail<IssuedUnit>(ProvisionStatus.BadRequest,
-                $"Unknown region '{regionInput}'. Allowed: {string.Join(", ", options.Value.RegionCodes.Keys.Order())}.");
+        if (ResolveProductAndRegion(deviceTypeInput, regionInput, out var deviceType, out var product, out var region) is { } typeError)
+            return Fail<IssuedUnit>(ProvisionStatus.BadRequest, typeError);
 
         if (ValidateFirmware(firmwareVersion) is { } firmwareError)
             return Fail<IssuedUnit>(ProvisionStatus.BadRequest, firmwareError);
@@ -77,34 +68,11 @@ public class UnitProvisioning(
             return Fail<IssuedUnit>(ProvisionStatus.BadRequest, bootloaderError);
         var bootloader = NormalizeBootloader(bootloaderVersion);
 
-        var product = productCode.ToUpperInvariant();
-        var prefix = product + region + SerialNumber.FormatVersion;
         var code = RegistrationCode.Generate();
         var now = DateTimeOffset.UtcNow;
 
-        // Next sequence for this product+region = highest issued (voided serials included, so a
-        // serial is never reused) plus a random small step, or the configured start for the first
-        // unit. The random step keeps serials from revealing exactly how many units exist. The
-        // unique index on SerialNumber makes a concurrent reserve collide instead of duplicate;
-        // retry picks up the new maximum.
-        for (var attempt = 0; attempt < MaxSerialAttempts; attempt++)
+        var allocated = await AllocateAsync(product, region, serial =>
         {
-            var existing = await db.BciDevices
-                .Where(d => d.SerialNumber.StartsWith(prefix))
-                .Select(d => d.SerialNumber)
-                .ToListAsync();
-
-            var highest = existing
-                .Select(ser => SerialNumber.TryParse(ser, out var p, out var seq) && p == prefix ? seq : -1)
-                .DefaultIfEmpty(-1)
-                .Max();
-            var next = highest < 0
-                ? options.Value.SequenceStart
-                : highest + RandomNumberGenerator.GetInt32(1, options.Value.MaxSequenceStep + 1);
-            if (next > SerialNumber.MaxSequence)
-                return Fail<IssuedUnit>(ProvisionStatus.Conflict, "Serial number space exhausted for this product/region.");
-
-            var serial = SerialNumber.Format(product, region[0], next);
             var unit = new BciDevice
             {
                 SerialNumber = serial,
@@ -126,23 +94,33 @@ public class UnitProvisioning(
                 FirmwareVersionAfter = firmware,
                 BootloaderVersionAfter = bootloader, // intended; applied to the unit at confirm
             });
+            return unit;
+        });
+        if (!allocated.IsOk)
+            return Fail<IssuedUnit>(allocated.Status, allocated.Message!);
 
-            try
-            {
-                await db.SaveChangesAsync();
-            }
-            catch (DbUpdateException)
-            {
-                foreach (var entry in db.ChangeTracker.Entries().ToList())
-                    entry.State = EntityState.Detached;
-                continue;
-            }
+        logger.LogInformation("Unit {Serial} reserved by {UserId}", allocated.Value!.SerialNumber, userId);
+        return new(ProvisionStatus.Ok, new IssuedUnit(allocated.Value, code));
+    }
 
-            logger.LogInformation("Unit {Serial} reserved by {UserId}", serial, userId);
-            return new(ProvisionStatus.Ok, new IssuedUnit(unit, code));
-        }
+    /// <summary>
+    /// Allocates the next serial for a product and region and holds it, exactly as
+    /// <see cref="HoldSerialAsync"/> holds one typed in: no registration code and no firmware or
+    /// bootloader version. This is how serials are obtained ahead of time (the serial is 3D-printed
+    /// on the casing, which takes a while); the unit gets its first code by <see cref="RekeyAsync"/>
+    /// when the board is flashed.
+    /// </summary>
+    public async Task<ProvisionResult<BciDevice>> AllocateHeldSerialAsync(
+        string userId, string? deviceTypeInput, string? regionInput)
+    {
+        if (ResolveProductAndRegion(deviceTypeInput, regionInput, out var deviceType, out var product, out var region) is { } typeError)
+            return Fail<BciDevice>(ProvisionStatus.BadRequest, typeError);
 
-        return Fail<IssuedUnit>(ProvisionStatus.Unavailable, "Could not allocate a serial number; try again.");
+        var now = DateTimeOffset.UtcNow;
+        var allocated = await AllocateAsync(product, region, serial => AddHeldUnit(serial, deviceType, userId, now));
+        if (allocated.IsOk)
+            logger.LogInformation("Serial {Serial} allocated and held by {UserId}", allocated.Value!.SerialNumber, userId);
+        return allocated;
     }
 
     /// <summary>
@@ -174,7 +152,97 @@ public class UnitProvisioning(
         if (await db.BciDevices.AnyAsync(d => d.SerialNumber == serial))
             return Fail<BciDevice>(ProvisionStatus.Conflict, "This serial has already been issued.");
 
-        var now = DateTimeOffset.UtcNow;
+        var unit = AddHeldUnit(serial, deviceType, userId, DateTimeOffset.UtcNow);
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Lost a race for the same serial (unique index); detach so the context stays usable.
+            foreach (var entry in db.ChangeTracker.Entries().ToList())
+                entry.State = EntityState.Detached;
+            return Fail<BciDevice>(ProvisionStatus.Conflict, "This serial has already been issued.");
+        }
+
+        logger.LogInformation("Serial {Serial} held by {UserId}", serial, userId);
+        return new(ProvisionStatus.Ok, unit);
+    }
+
+    /// <summary>
+    /// Validates a device type and region against configuration. Returns an error message, or null
+    /// with the normalized device type, its product code and the region.
+    /// </summary>
+    private string? ResolveProductAndRegion(
+        string? deviceTypeInput, string? regionInput, out string deviceType, out string product, out string region)
+    {
+        product = string.Empty;
+        region = regionInput?.Trim().ToUpperInvariant() ?? string.Empty;
+        deviceType = deviceTypeInput?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!options.Value.ProductCodes.TryGetValue(deviceType, out var productCode))
+            return $"Unknown device type '{deviceTypeInput}'.";
+
+        var allowed = string.Join(", ", options.Value.RegionCodes.Keys.Order());
+        if (region.Length == 0)
+            return $"Region is required. Allowed: {allowed}.";
+        if (!options.Value.RegionCodes.ContainsKey(region))
+            return $"Unknown region '{regionInput}'. Allowed: {allowed}.";
+
+        product = productCode.ToUpperInvariant();
+        return null;
+    }
+
+    /// <summary>
+    /// Picks the next serial for this product+region and saves the unit <paramref name="addUnit"/>
+    /// adds for it. Next sequence = highest issued (voided serials included, so a serial is never
+    /// reused) plus a random small step, or the configured start for the first unit. The random step
+    /// keeps serials from revealing exactly how many units exist. The unique index on SerialNumber
+    /// makes a concurrent allocation collide instead of duplicate; retry picks up the new maximum.
+    /// </summary>
+    private async Task<ProvisionResult<BciDevice>> AllocateAsync(string product, string region, Func<string, BciDevice> addUnit)
+    {
+        var prefix = product + region + SerialNumber.FormatVersion;
+
+        for (var attempt = 0; attempt < MaxSerialAttempts; attempt++)
+        {
+            var existing = await db.BciDevices
+                .Where(d => d.SerialNumber.StartsWith(prefix))
+                .Select(d => d.SerialNumber)
+                .ToListAsync();
+
+            var highest = existing
+                .Select(ser => SerialNumber.TryParse(ser, out var p, out var seq) && p == prefix ? seq : -1)
+                .DefaultIfEmpty(-1)
+                .Max();
+            var next = highest < 0
+                ? options.Value.SequenceStart
+                : highest + RandomNumberGenerator.GetInt32(1, options.Value.MaxSequenceStep + 1);
+            if (next > SerialNumber.MaxSequence)
+                return Fail<BciDevice>(ProvisionStatus.Conflict, "Serial number space exhausted for this product/region.");
+
+            var unit = addUnit(SerialNumber.Format(product, region[0], next));
+
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                foreach (var entry in db.ChangeTracker.Entries().ToList())
+                    entry.State = EntityState.Detached;
+                continue;
+            }
+
+            return new(ProvisionStatus.Ok, unit);
+        }
+
+        return Fail<BciDevice>(ProvisionStatus.Unavailable, "Could not allocate a serial number; try again.");
+    }
+
+    /// <summary>Adds a held unit (serial only: no code, no firmware) and its history event to the context.</summary>
+    private BciDevice AddHeldUnit(string serial, string deviceType, string userId, DateTimeOffset now)
+    {
         var unit = new BciDevice
         {
             SerialNumber = serial,
@@ -193,21 +261,7 @@ public class UnitProvisioning(
             UserId = userId,
             Note = "Serial held; no registration code issued.",
         });
-
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            // Lost a race for the same serial (unique index); detach so the context stays usable.
-            foreach (var entry in db.ChangeTracker.Entries().ToList())
-                entry.State = EntityState.Detached;
-            return Fail<BciDevice>(ProvisionStatus.Conflict, "This serial has already been issued.");
-        }
-
-        logger.LogInformation("Serial {Serial} held by {UserId}", serial, userId);
-        return new(ProvisionStatus.Ok, unit);
+        return unit;
     }
 
     /// <summary>The configured device type whose product code a canonical serial starts with, or null.</summary>

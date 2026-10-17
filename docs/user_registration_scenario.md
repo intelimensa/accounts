@@ -12,8 +12,8 @@ list.
 1. **Create an account** at the web portal (`/Account/Register`) and sign in. **[built]** A new
    account starts with no configuration assigned. Access lapses on the account's expiry date or if
    staff revoke it.
-2. **Receive the unit.** The label or insert card carries the **serial number** and a
-   **registration code**, kept as a fallback; normally the participant never needs them.
+2. **Receive the unit.** The casing carries the **serial number**. The **registration code** is not
+   printed anywhere: it is stored on the unit and AxoSync reads it from there.
    **[built on the server; flashing needs the new firmware]**
 3. **Start AxoSync with the unit connected and sign in.** **[built]** AxoSync logs in through
    `POST /api/auth/login`.
@@ -29,8 +29,9 @@ list.
    - On success the unit is linked to the account. Repeating the registration for the same
      account and unit is harmless and needs no code.
    - Failed registrations are rate limited per account (10 per hour, then `429`). **[built]**
-   - **Fallback:** if the unit can't be read (for example over BLE without a bonded link and
-     button press), AxoSync offers manual entry of the serial and the code from the label.
+   - **No manual fallback:** the code can't be typed in, because it isn't printed anywhere. If the
+     unit can't be read (for example over BLE without a bonded link and button press), it can't be
+     registered until it can.
    - **Units shipped before the firmware update** (4 loaned units) have no code and are being
      replaced once the firmware is stable. Their existing account pairings keep working, but no
      new account can register them: a unit with no stored code hash is not registerable.
@@ -41,8 +42,8 @@ list.
 
 ## Things that can go wrong
 
-- **"Unknown device serial" / registration failed:** retype the serial and code. If it still
-  fails, contact staff; the unit may not be on the list, or the label code may need regenerating.
+- **"Unknown device serial" / registration failed:** contact staff; the unit may not be on the
+  list or not confirmed as manufactured yet, or its code may need regenerating (a rekey and reflash).
 - **Account expired or revoked:** registration is refused entirely until staff act.
 - **Unit passed to another participant:** the new holder registers it under their own account.
   Registering never removes anyone else's link; staff revoke the previous pairing.

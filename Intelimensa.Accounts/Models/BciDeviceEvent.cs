@@ -11,14 +11,13 @@ public enum BciDeviceEventType
 
 /// <summary>
 /// Why a unit's registration code was rotated. Every rekey invalidates the old code and requires
-/// the identity page to be re-flashed; the reason records what prompted it.
+/// the identity page to be re-flashed; the reason records what prompted it. The value 1 is retired
+/// (it was "Relabel", from when a printed label was planned; the code is never printed anywhere)
+/// and must not be reused.
 /// </summary>
 public enum RekeyReason
 {
-    /// <summary>The label was lost, leaked or damaged. The plaintext code isn't stored, so it can't just be reprinted.</summary>
-    Relabel = 1,
-
-    /// <summary>The identity was lost or corrupted (a programmer flash erases it) and couldn't be restored. A reflash that puts the same identity back needs no rekey.</summary>
+    /// <summary>The identity was lost or corrupted (a programmer flash erases it) and couldn't be restored, or the issued code was lost before it was written to the unit. A reflash that puts the same identity back needs no rekey.</summary>
     Reflash = 2,
 
     /// <summary>Hardware rework or a board swap.</summary>

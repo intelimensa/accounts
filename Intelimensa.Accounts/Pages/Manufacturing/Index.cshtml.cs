@@ -87,6 +87,35 @@ public class IndexModel(
     }
 
     /// <summary>
+    /// Allocates new serials and holds them, for casings that are 3D-printed with the serial before the
+    /// boards are ready. No codes and no firmware: each gets its first code from a rekey at flash time.
+    /// </summary>
+    public async Task<IActionResult> OnPostAllocateSerialsAsync(string? deviceType, string? region, int count)
+    {
+        if (await provisioning.GetUsableUserIdAsync(User) is not { } userId)
+            return Forbid();
+        if (count is < 1 or > MaxSerialBatch)
+            return await FailAsync($"Count must be between 1 and {MaxSerialBatch}.");
+
+        for (var i = 0; i < count; i++)
+        {
+            var result = await provisioning.AllocateHeldSerialAsync(userId, deviceType, region);
+            if (!result.IsOk)
+            {
+                // Serials already allocated in this batch stay held.
+                ErrorMessage = Held.Count > 0
+                    ? $"{result.Message} Allocated {Held.Count} of {count} before this failed."
+                    : result.Message;
+                break;
+            }
+            Held.Add(SerialNumber.ToDisplay(result.Value!.SerialNumber));
+        }
+
+        await LoadAsync();
+        return Page();
+    }
+
+    /// <summary>
     /// Holds serials that already exist outside the server (e.g. printed on casings): only the serial is
     /// reserved, with no code and no firmware, so it can't be issued to another unit. The first code
     /// comes from a rekey when the unit is flashed.

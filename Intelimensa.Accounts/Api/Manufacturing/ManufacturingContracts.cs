@@ -26,7 +26,7 @@ public record ConfirmUnitRequest(string SerialNumber, string RegistrationCode, s
 public record UnitRequest(string SerialNumber);
 
 /// <summary>
-/// <paramref name="Reason"/> is required, a string: "Relabel", "Reflash" or "Rework" (case-insensitive). The
+/// <paramref name="Reason"/> is required, a string: "Reflash" or "Rework" (case-insensitive). The
 /// <paramref name="FirmwareVersion"/> is the version the station intends to flash; it's recorded in
 /// the unit's history but only applied to the unit at <c>confirm</c>.
 /// </summary>
