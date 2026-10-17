@@ -430,3 +430,27 @@ The DB is SQLite (`accounts.db`, gitignored) via `ConnectionStrings:DefaultConne
 - Namespace: `Intelimensa.Accounts.*`, matching AxoSync's `Intelimensa.AxoSync.*` convention.
 - This repo is independent of `axosync/` (separate git repo, separate solution) but should stay
   consistent with it in naming and in the encrypted-config format it produces/consumes.
+
+## Shared contract fixtures (workspace)
+
+This repo is one of the sibling repos of the Intelimensa workspace (`github.com/intelimensa/code-workspace`, private; normally the
+parent folder of this one). Where two repos implement one contract, a JSON fixture pins it: one repo **owns** the fixture, the
+others keep a byte-identical **copy**, and each side tests itself against it. The workspace repo holds the list
+(`vectors.manifest`), `sync-vectors.sh` (copies each owner's file over its copies) and `check-contracts.sh` (runs all of it, about
+10 s). Its root `CLAUDE.md` has the overview.
+
+| Fixture | Here | Role | Generator / the other side |
+|---|---|---|---|
+| Release signing | `testdata/release-signing-vectors.json` | owner | `scripts/gen-signing-vectors.py`; copy in `axosync` (branch `remote-account` only) |
+| Serial numbers | `testdata/serial-number-vectors.json` | owner | `scripts/gen-serial-vectors.py`; copy in `firmware/quarry/tests/testdata/` |
+| JSON API | `testdata/api-vectors.json` | owner | `scripts/gen-api-vectors.py`; copies in `firmware/quarry/tests/testdata/` and `axosync` (`remote-account` only) |
+| Firmware images | `testdata/firmware-image-vectors.json` | copy | owner: `firmware/quarry/tests/` |
+| Unit identity | `testdata/identity-vectors.json` | copy | owner: `firmware/testdata/` |
+
+They are checked by `Intelimensa.Accounts.Tests`.
+
+- **Never edit a copy.** Change the owner's generator, regenerate, run `../sync-vectors.sh --fix` (it lives in the workspace root,
+  the folder above this one), and commit the changed copy in each repo it touched.
+- Run `../check-contracts.sh` before pushing a change that touches one of these contracts.
+- This repo alone can't run those scripts. If the workspace isn't next to it, clone it and run its `onboard.sh`, which clones the
+  other repos into place.
