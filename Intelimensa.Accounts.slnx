@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="Intelimensa.Accounts/Intelimensa.Accounts.csproj" />
+  <Project Path="Intelimensa.Accounts.Tests/Intelimensa.Accounts.Tests.csproj" />
 </Solution>

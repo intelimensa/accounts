@@ -13,7 +13,7 @@ namespace Intelimensa.Accounts.Publishing;
 /// <remarks>
 /// The statement text and the algorithm (ECDSA P-256, SHA-256, DER-encoded signature, base64) are a
 /// contract with the AxoSync updater and the publish script -- change all three together, and
-/// bump the <c>v1</c> tag.
+/// bump the <c>v1</c> tag. <c>testdata/release-signing-vectors.json</c> pins it for all three.
 /// </remarks>
 public static class ReleaseSigning
 {

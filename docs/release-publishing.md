@@ -35,6 +35,14 @@ intelimensa-axosync-release-v1
 `Publishing/ReleaseSigning.cs` defines it. Change the format by bumping the `v1` tag and
 changing all three places together.
 
+**The shared fixture** `testdata/release-signing-vectors.json` pins the contract: valid signatures for every
+platform plus tampered fields, wrong tag/line endings, a wrong signer and bad encodings, each with the verdict
+every implementation must give. It is checked by `Intelimensa.Accounts.Tests` (`dotnet test`), by AxoSync's
+`UpdateTrustVectorTests` (a byte-identical copy) and by `publish.sh --selftest`. A format change starts here:
+edit `scripts/gen-signing-vectors.py` for the new tag, regenerate (`python3 -I scripts/gen-signing-vectors.py`),
+then run `./sync-vectors.sh --fix` in the workspace root to copy it to axosync and commit in each repo. The
+test key in it is a throwaway: never add it to a trusted-key list.
+
 Key setup, once:
 
 ```bash

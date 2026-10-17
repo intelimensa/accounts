@@ -347,7 +347,12 @@ dotnet build Intelimensa.Accounts.slnx
 dotnet run --project Intelimensa.Accounts/Intelimensa.Accounts.csproj
 ```
 
-No test project exists yet.
+```bash
+dotnet test Intelimensa.Accounts.Tests/Intelimensa.Accounts.Tests.csproj
+```
+
+`Intelimensa.Accounts.Tests` is small so far: it runs `ReleaseSigning` against the fixture shared with AxoSync and
+`publish.sh` (`testdata/release-signing-vectors.json`, owned by this repo; see `docs/release-publishing.md`).
 
 ### Dev server
 
