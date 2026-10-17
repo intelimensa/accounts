@@ -399,7 +399,9 @@ Notes:
 - The script writes `deploy-info.txt` (commit and time) into the app directory; `status` reads it.
 - Pre-deploy backups are not pruned. Delete old ones from `/var/www/accounts/backups` now and then.
 - The server, paths and service name are the defaults at the top of the script
-  (`DEPLOY_HOST`, `DEPLOY_ROOT`, `DEPLOY_SERVICE`, `DEPLOY_HEALTH_URL` override them).
+  (`DEPLOY_HOST`, `DEPLOY_ROOT`, `DEPLOY_SERVICE`, `DEPLOY_HEALTH_URL`, `DEPLOY_HEALTH_HOST` override them).
+  The health check sends `Host: accounts.intelimensa.com`, because production's `AllowedHosts`
+  answers any other host with a 400.
 
 ## 13. Backups
 

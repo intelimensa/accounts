@@ -218,7 +218,7 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   firmware) and `msv3` (bootloader that takes several application versions) map to `MSV1`/`MSV2`/`MSV3`.
   Which config a unit uses is a separate per-unit staff assignment.
 - **Unit history and firmware rules**: every manufacturing call appends a `BciDeviceEvent` (never a
-  code). `rekey` needs a `reason` (`RekeyReason`: Relabel/Reflash/Rework, parsed from a string), an
+  code). `rekey` needs a `reason` (`RekeyReason`: Reflash/Rework, parsed from a string; value 1 was `Relabel`, retired, don't reuse it), an
   optional note and the *intended* `firmwareVersion`; it works on Reserved and Manufactured units and
   returns the unit to Reserved. Firmware fields are applied at `confirm` (or `/firmware`, for
   firmware writes that leave the registration code unchanged): `LastFirmwareUpdatedAt` always
@@ -235,8 +235,13 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   endpoints only map results to HTTP). Fresh registration codes are rendered once in the response (no-store, with
   CSV download and print), never kept in TempData or the DB. Confirming by hand trusts the operator typed the
   code read back from the unit; only Quarry reads it off the device itself.
-  **Hold serials** takes serials typed in by hand (one per line, up to 200) for units whose serial is already printed
-  on a casing: `UnitProvisioning.HoldSerialAsync` reserves *only the serial* so the allocator can never issue it to
+  **The registration code is never printed** (no label, no insert card): it lives in the unit's identity record and as
+  a hash here, and the code table/CSV on this page is only for the operator writing it into the unit.
+  **Allocate serials in advance** (device type, region, count up to 200; `UnitProvisioning.AllocateHeldSerialAsync`)
+  is the normal start of a unit's life: the serial is 3D-printed on the casing, which takes time, so serials are
+  allocated first and held, and the code is issued by rekey when the board is flashed.
+  **Hold serials** takes serials typed in by hand (one per line, up to 200) for a serial that already exists
+  outside the server: `UnitProvisioning.HoldSerialAsync` reserves *only the serial* so the allocator can never issue it to
   another unit. The unit is `Reserved` with **no registration code and no firmware/bootloader version**
   (`BciDevice.IsHeld`; `CurrentFirmwareVersion` is nullable for this). It can't be confirmed (the message says to rekey)
   or registered by a participant. Flash time: **rekey** it, which issues its first code (the server records the reason
@@ -326,14 +331,14 @@ touching any of this.
   expired). Shows the latest published build per platform (with SHA-256) plus older versions; a
   platform with no published build is greyed out. Files stream from `?handler=File&version=&platform=`
   and only for Published releases. The page is no longer linked from the navbar/landing page.
+- **Gotcha**: `.gitignore` has the Visual Studio template line `[Rr]eleases/`, which (macOS is
+  case-insensitive) silently ignores any new *folder* named `Releases`. That's why the update API
+  lives in `Api/Updates/`. Don't create a folder with that name.
 
 ## Build Commands
 
 The solution file is `.slnx` (the newer XML-based format), not `.sln` — there is no `.sln` file
 in this repo.
-- **Gotcha**: `.gitignore` has the Visual Studio template line `[Rr]eleases/`, which (macOS is
-  case-insensitive) silently ignores any new *folder* named `Releases`. That's why the update API
-  lives in `Api/Updates/`. Don't create a folder with that name.
 
 ```bash
 dotnet build Intelimensa.Accounts.slnx
@@ -351,6 +356,16 @@ No test project exists yet.
 `ConnectionStrings__*`/`*__StoragePath`/`Jwt__*` variables from the shell, and `stop` only ever stops a process that is
 verifiably this repo's app (by pidfile, or by the dev port if the pidfile was lost); anything else on the port is
 reported and left alone. It never deletes data.
+
+### Deploying to production
+
+`scripts/deploy.sh plan|deploy|rollback|status` deploys to the VPS (`docs/deployment-vps.md`, step 12). The app never
+migrates itself at startup, so the script does it: it applies only the migrations the server hasn't run, with the
+service stopped, after a `sqlite3 .backup`, using `sqlite3 -bail` and restoring the backup if the script fails. The new
+build is uploaded beside the running one and switched in by a rename; the old one is kept as `app.prev` for `rollback`
+(which also restores the pre-deploy database when that deploy changed the schema, losing anything written since).
+`deploy` and `rollback` change production: run them only when the user asks for that deploy. `plan` and `status` are
+read-only. Don't hand-run `dotnet ef migrations script` against the production database.
 
 ### Test server
 
