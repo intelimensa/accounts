@@ -6,14 +6,26 @@
 
 <section class="hero text-center">
     <h1 class="display-5">Intelimensa Accounts</h1>
-    <p class="lead">
-        Account access and configuration delivery for the MindStone research cohort. Sign in to
-        check your assignment, or create an account if you were given access to a loaned device.
-    </p>
-    <div class="d-flex justify-content-center gap-3 flex-wrap mt-4">
-        <a class="btn btn-ia-primary btn-lg px-4" asp-page="/Account/Login">Sign In</a>
-        <a class="btn btn-ia-outline btn-lg px-4" asp-page="/Account/Register">Create Account</a>
-    </div>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <p class="lead">
+            Account access and configuration delivery for the MindStone research cohort.
+        </p>
+        <div class="d-flex justify-content-center gap-3 flex-wrap mt-4">
+            <a class="btn btn-ia-primary btn-lg px-4" asp-page="/Account/Status">My Account</a>
+        </div>
+    }
+    else
+    {
+        <p class="lead">
+            Account access and configuration delivery for the MindStone research cohort. Sign in to
+            check your assignment, or create an account if you were given access to a loaned device.
+        </p>
+        <div class="d-flex justify-content-center gap-3 flex-wrap mt-4">
+            <a class="btn btn-ia-primary btn-lg px-4" asp-page="/Account/Login">Sign In</a>
+            <a class="btn btn-ia-outline btn-lg px-4" asp-page="/Account/Register">Create Account</a>
+        </div>
+    }
 </section>
 
 <section class="row g-4 py-4">
