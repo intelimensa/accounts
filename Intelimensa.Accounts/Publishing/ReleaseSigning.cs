@@ -20,6 +20,10 @@ public static class ReleaseSigning
     public static string Statement(string version, ReleasePlatform platform, string sha256, long sizeBytes) =>
         $"intelimensa-axosync-release-v1\n{version}\n{platform}\n{sha256}\n{sizeBytes}\n";
 
+    /// <summary>True if the signature verifies against at least one of the keys (any one is enough, as in AxoSync).</summary>
+    public static bool VerifyAny(IEnumerable<string> publicKeysBase64, string statement, string signatureBase64) =>
+        publicKeysBase64.Any(key => Verify(key, statement, signatureBase64));
+
     /// <summary>Verifies against a base64 SubjectPublicKeyInfo (what <c>openssl pkey -pubout -outform DER</c> emits).</summary>
     public static bool Verify(string publicKeyBase64, string statement, string signatureBase64)
     {

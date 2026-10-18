@@ -348,7 +348,7 @@ touching any of this.
   endpoint. `Publishing/ReleaseVersion` is the SemVer comparer (`1.4.0-beta.1 < 1.4.0`).
 - **Signed builds**: each artifact carries an offline ECDSA P-256 signature over version, platform,
   SHA-256 and size. The private key never touches this server; the public key is
-  `Releases:SigningPublicKey` here and compiled into AxoSync, which does the real verification. Unset
+  `Releases:SigningPublicKey` (or several, `Releases:SigningPublicKeys`; any one signature is enough) here and compiled into AxoSync, which does the real verification. Unset
   = no enforcement (dev only).
 - **Publishing**: the `Publisher` role (JWT, seeded at startup, granted by `scripts/setrole.sh` like
   Staff/Manufacturer) drives `/api/publishing/...`: draft, upload artifact + signature, publish /

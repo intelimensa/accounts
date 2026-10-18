@@ -24,7 +24,7 @@ code" and held serials, but Quarry's code wasn't:
   on the same disk as the database. Decide where off-server copies go.
 - **The release signing key is a test key.** Production uses the YubiKey's PIV slot 82 key,
   certificate "AxoSync release signing (test)". Moving to a real key means changing
-  `Releases__SigningPublicKey` on the server *and* the key compiled into AxoSync, at the same time.
+  `Releases__SigningPublicKey` (or `Releases__SigningPublicKeys__N`) on the server *and* the key compiled into AxoSync, at the same time.
 - **Pre-deploy backups are never pruned** (`/var/www/accounts/backups/accounts.pre-deploy-*.db`,
   one per deploy).
 - **Product codes not in use.** `Manufacturing:ProductCodes` maps `msv1` and `msv2` as well as

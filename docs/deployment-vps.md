@@ -193,7 +193,10 @@ environment variables — ASP.NET Core maps `Section:Key` to `SECTION__KEY`
   confirm. The public links come from `App:PublicBaseUrl` (already set in `appsettings.Production.json`).
   Locally: `dotnet user-secrets set "Email:Password" ...` etc.
 - **`Releases:SigningPublicKey`** — the public half of the release-signing key
-  (base64; not a secret, but it must be set). While it is set the server refuses unsigned
+  (base64; not a secret, but it must be set). To cover a second signing key (a backup
+  YubiKey), either separate keys with `;` here or set `Releases__SigningPublicKeys__0`,
+  `__1`, ...; a signature from any one of them is accepted, and the same keys must be
+  compiled into AxoSync (`UpdateSigningKeys.txt`). While it is set the server refuses unsigned
   or wrongly signed builds and won't publish a release with an unsigned artifact. Leaving
   it unset disables that check, so don't in production. See
   [`release-publishing.md`](release-publishing.md) for generating the pair. **Production

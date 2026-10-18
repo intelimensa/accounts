@@ -12,8 +12,8 @@ compromised, an attacker could replace the installer for every client. So every 
 offline** and the client verifies the signature against a public key compiled into AxoSync:
 
 - The private key lives on the publisher's machine only. It is never uploaded to this server.
-- The server stores and relays each artifact's signature and, when `Releases:SigningPublicKey`
-  is set, rejects uploads whose signature doesn't verify (a typo guard, not the security boundary:
+- The server stores and relays each artifact's signature and, when `Releases:SigningPublicKey` (or
+  the list `Releases:SigningPublicKeys`) is set, rejects uploads whose signature doesn't verify against any of the keys (a typo guard, not the security boundary:
   the client check is).
 - A compromised server can withhold updates but can't make clients install anything it made up.
 - Clients must also refuse to install a version that isn't higher than the running one, otherwise

@@ -10,11 +10,29 @@ namespace Intelimensa.Accounts.Publishing;
 public class ReleasePublishingOptions
 {
     /// <summary>
-    /// Base64 SubjectPublicKeyInfo of the ECDSA P-256 key releases are signed with. When set, every
-    /// uploaded artifact must carry a valid signature and a release can't be published while any
-    /// artifact lacks one. Unset = signatures are stored if given but not required (development).
+    /// Base64 SubjectPublicKeyInfo of an ECDSA P-256 key releases are signed with. When any key is
+    /// configured, every uploaded artifact must carry a valid signature from one of them and a
+    /// release can't be published while any artifact lacks one. None = signatures are stored if given
+    /// but not required (development). Several keys may be given here separated by <c>;</c>, the form
+    /// AxoSync's <c>UpdateSigningKeys.txt</c> uses; <see cref="SigningPublicKeys"/> is the list form.
     /// </summary>
     public string? SigningPublicKey { get; set; }
+
+    /// <summary>
+    /// More than one key, so a lost or retired signing key can be covered by a second one (set as
+    /// <c>Releases__SigningPublicKeys__0</c>, <c>__1</c>, ... in the environment). A signature from
+    /// any of them is accepted; they must match the keys compiled into AxoSync.
+    /// </summary>
+    public string[]? SigningPublicKeys { get; set; }
+
+    /// <summary>Every configured key, from both settings, without blanks or duplicates.</summary>
+    public IReadOnlyList<string> AllSigningPublicKeys =>
+        (SigningPublicKey?.Split(';') ?? [])
+            .Concat(SigningPublicKeys ?? [])
+            .Select(k => k.Trim())
+            .Where(k => k.Length > 0)
+            .Distinct()
+            .ToList();
 }
 
 public enum PublishError { NotFound, Invalid, Conflict }
@@ -38,7 +56,7 @@ public partial class ReleasePublisher(
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._ -]*$")]
     private static partial Regex FileNamePattern();
 
-    public bool SignatureRequired => !string.IsNullOrWhiteSpace(options.Value.SigningPublicKey);
+    public bool SignatureRequired => options.Value.AllSigningPublicKeys.Count > 0;
 
     /// <summary>
     /// Creates the draft, or updates the notes / minimum version of an existing draft (so a script
@@ -117,7 +135,7 @@ public partial class ReleasePublisher(
         var existing = release.Artifacts.FirstOrDefault(a => a.Platform == platform);
 
         if (signature is not null && SignatureRequired &&
-            !ReleaseSigning.Verify(options.Value.SigningPublicKey!,
+            !ReleaseSigning.VerifyAny(options.Value.AllSigningPublicKeys,
                 ReleaseSigning.Statement(release.Version, platform, stored.Sha256, stored.SizeBytes), signature))
         {
             // The new file may have overwritten the old one at the same key; drop both rather than
@@ -129,7 +147,7 @@ public partial class ReleasePublisher(
                 await db.SaveChangesAsync(ct);
             }
             return Fail<ReleaseArtifact>(PublishError.Invalid,
-                "The signature doesn't match this file, version and platform for the configured public key.");
+                "The signature doesn't match this file, version and platform for any configured public key.");
         }
 
         if (existing is not null)
