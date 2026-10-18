@@ -361,7 +361,9 @@ touching any of this.
 - **Downloading by hand**: `/Download` requires login *and* `AccountPolicy.IsUsable` (active, not
   expired). Shows the latest published build per platform (with SHA-256) plus older versions; a
   platform with no published build is greyed out. Files stream from `?handler=File&version=&platform=`
-  and only for Published releases. The page is no longer linked from the navbar/landing page.
+  and only for Published releases. It is linked (navbar "Downloads", a button on the home page, a row on My Account) only for
+  accounts that pass `AccountPolicy.IsUsable`, via the per-request `Security/AccountAccess`; that only decides what to show,
+  the page and endpoints still check the policy themselves.
 - **Gotcha**: `.gitignore` has the Visual Studio template line `[Rr]eleases/`, which (macOS is
   case-insensitive) silently ignores any new *folder* named `Releases`. That's why the update API
   lives in `Api/Updates/`. Don't create a folder with that name.

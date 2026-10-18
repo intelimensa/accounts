@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿@inject Intelimensa.Accounts.Security.AccountAccess Access
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -30,6 +31,12 @@
                         <li class="nav-item">
                             <a class="nav-link" asp-area="" asp-page="/Privacy">Privacy</a>
                         </li>
+                        @if (await Access.IsUsableAsync(User))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" asp-page="/Download">Downloads</a>
+                            </li>
+                        }
                         @if (User.IsInRole("Manufacturer"))
                         {
                             <li class="nav-item">

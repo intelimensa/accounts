@@ -85,6 +85,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]))
 else
     builder.Services.AddSingleton<IMailSender, LoggingMailSender>();
 builder.Services.AddScoped<EmailConfirmation>();
+builder.Services.AddScoped<AccountAccess>();
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2idPasswordHasher>();
 builder.Services.AddScoped<TokenService>();
 

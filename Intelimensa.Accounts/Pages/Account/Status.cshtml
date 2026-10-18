@@ -41,6 +41,12 @@
                     @(Model.Account?.ExpiresAt is { } expiresAt ? expiresAt.ToString("yyyy-MM-dd") : "No expiry set")
                 </dd>
 
+                @if (Model.CanDownload)
+                {
+                    <dt class="col-sm-4">AxoSync</dt>
+                    <dd class="col-sm-8"><a asp-page="/Download">Download the app &rarr;</a></dd>
+                }
+
                 <dt class="col-sm-4">Registered devices</dt>
                 <dd class="col-sm-8">
                     @if (!Model.Devices.Any())

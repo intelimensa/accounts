@@ -17,6 +17,8 @@ public class StatusModel(
 {
     public bool EmailConfirmed { get; private set; }
 
+    public bool CanDownload => Intelimensa.Accounts.Security.AccountPolicy.IsUsable(Account);
+
     [TempData]
     public string? Message { get; set; }
 
