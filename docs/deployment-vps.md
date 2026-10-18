@@ -116,6 +116,12 @@ server {
 }
 ```
 
+The app trusts `X-Forwarded-For`/`X-Forwarded-Proto` from loopback only (`UseForwardedHeaders` in `Program.cs`), so
+keep both `proxy_set_header` lines: they are how the app learns the request was https. Without them cookies lose
+their `Secure` flag, HSTS isn't sent and the log fills with "Failed to determine the https port". Outside
+Development the auth and antiforgery cookies are `Secure` regardless. The http-to-https redirect for the public
+is nginx's job (certbot adds it), not the app's.
+
 Enable it:
 
 ```bash

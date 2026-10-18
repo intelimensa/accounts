@@ -12,6 +12,7 @@ using Intelimensa.Accounts.Security;
 using Intelimensa.Accounts.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -96,6 +97,10 @@ if (string.IsNullOrWhiteSpace(jwtSigningKey))
         "(a real secret store in other environments).");
 }
 
+// Production is https-only (behind nginx); development runs on plain http.
+var cookieSecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+builder.Services.AddAntiforgery(options => options.Cookie.SecurePolicy = cookieSecurePolicy);
+
 builder.Services.AddAuthentication(options =>
     {
         options.DefaultScheme = IdentityConstants.ApplicationScheme;
@@ -107,6 +112,7 @@ builder.Services.AddAuthentication(options =>
     // ("Cookies"), or SignInManager.SignInAsync throws "No sign-in handler is registered".
     .AddCookie(IdentityConstants.ApplicationScheme, options =>
     {
+        options.Cookie.SecurePolicy = cookieSecurePolicy;
         options.LoginPath = "/Account/Login";
         options.AccessDeniedPath = "/Account/AccessDenied";
         // Without this a revoked role would live on in the cookie until it expires.
@@ -157,7 +163,15 @@ builder.Services.AddAuthorization(options =>
         .RequireRole("Publisher"));
 });
 
+// nginx terminates TLS and proxies plain http to 127.0.0.1 (docs/deployment-vps.md). Without this the app
+// sees every request as http: cookies lose the Secure flag, HSTS is never sent and the HTTPS redirect has
+// no port. Only loopback proxies are trusted (the defaults), so a client can't spoof the header.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
+
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]) && !app.Environment.IsDevelopment())
     app.Logger.LogWarning("Email:Host is not set: confirmation emails are only logged, not sent, so new accounts cannot confirm their address.");
