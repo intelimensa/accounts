@@ -464,6 +464,11 @@ that deploy is then gone from the live database** (the replaced database is kept
 `accounts.pre-rollback-<time>.db`). If the deploy had no migrations, only the code goes back. Only
 one previous version is kept, so a rollback can't be repeated.
 
+Every deploy and rollback appends one line to `backups/deploy.log` on the server: time (UTC), user,
+`deploy` or `rollback`, the commit, the migrations applied (or whether the database was restored),
+the backup file, and `service=up` or `service=DOWN`. Read it with `scripts/deploy.sh log [N]`. It
+starts with the first deploy made after this was added; earlier ones are only in `deploy-info.txt`.
+
 Notes:
 
 - `sudo` on the server is used for `systemctl` and `journalctl` and may ask for your password once

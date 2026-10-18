@@ -8,6 +8,7 @@
 #   deploy.sh rollback [--yes]          put the previous version back (and the pre-deploy database, if that deploy
 #                                       changed the schema)
 #   deploy.sh status                    what is deployed and whether the service is up
+#   deploy.sh log [N]                   the last N (default 20) lines of the server's deploy log
 #
 # What it guarantees:
 #   - The database is backed up (sqlite3 .backup) before every deploy, with the service stopped.
@@ -15,6 +16,8 @@
 #     the script, the backup is restored and the old version is started again. Nothing is half-applied.
 #   - The new version is uploaded next to the running one (app.new) and switched in by a rename, so the
 #     service is down only for the backup, the migration and the rename. The old one is kept as app.prev.
+#   - Every deploy and rollback appends a line to $DEPLOY_ROOT/backups/deploy.log on the server (time, who,
+#     what, migrations, backup file, and whether the service came up). Nothing reads it back but 'log'.
 #   - It refuses to deploy if the server has run a migration this checkout doesn't know (older code), or if
 #     the app directory holds data (a database, uploaded releases or firmware) that the switch would lose.
 #
@@ -64,6 +67,7 @@ set -euo pipefail
 cmd="$1"; ROOT="$2"; SERVICE="$3"; HEALTH_URL="$4"; HEALTH_HOST="$5"; SQL="${6:-}"
 APP="$ROOT/app"; NEW="$ROOT/app.new"; PREV="$ROOT/app.prev"
 DB="$ROOT/data/accounts.db"; BACKUPS="$ROOT/backups"; STATE="$BACKUPS/last-deploy"
+LOG="$BACKUPS/deploy.log"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -77,13 +81,25 @@ healthy() {
   return 1
 }
 
+# One line per event: time, user, event, the commit now in $APP, then any extra fields.
+log_event() {
+  local event="$1"; shift
+  local commit
+  commit="$(sed -n 's/^commit=//p' "$APP/deploy-info.txt" 2>/dev/null | head -1)"
+  mkdir -p "$BACKUPS"
+  printf '%s %s %s commit="%s" %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${SUDO_USER:-${USER:-$(id -un)}}" "$event" "${commit:-unknown}" "$*" >>"$LOG"
+}
+
+# $1: event name for the log, $2: extra log fields, $3: what to say if the service doesn't come up.
 start_and_check() {
   sudo systemctl start "$SERVICE"
   if healthy; then
+    log_event "$1" "$2 service=up"
     echo "Service is up ($HEALTH_URL answers)."
   else
+    log_event "$1" "$2 service=DOWN"
     sudo journalctl -u "$SERVICE" -n 40 --no-pager || true
-    die "the service did not answer at $HEALTH_URL within 30s (log above). $1"
+    die "the service did not answer at $HEALTH_URL within 30s (log above). $3"
   fi
 }
 
@@ -135,7 +151,10 @@ $stray"
     mv "$NEW" "$APP"
     printf 'backup=%s\nmigrated=%s\n' "$backup" "$migrated" >"$STATE"
 
-    start_and_check "The new version is in place; run 'deploy.sh rollback' to go back."
+    migrations=""
+    [ -z "$SQL" ] || migrations="$(grep -o "VALUES ('[0-9]\{14\}_[A-Za-z0-9_]*'" "$SQL" | sed "s/VALUES ('//;s/'\$//" | paste -sd, -)"
+    start_and_check deploy "migrations=${migrations:-none} backup=$backup" \
+      "The new version is in place; run 'deploy.sh rollback' to go back."
     ;;
 
   rollback)
@@ -161,7 +180,8 @@ $stray"
     mv "$PREV" "$APP"
     rm -f "$STATE"
 
-    start_and_check "The previous version is in place; the one rolled back is at $ROOT/app.rolledback."
+    start_and_check rollback "database_restored=$([ "$migrated" = "1" ] && echo yes || echo no)" \
+      "The previous version is in place; the one rolled back is at $ROOT/app.rolledback."
     ;;
 
   *) die "unknown remote command '$cmd'." ;;
@@ -323,10 +343,18 @@ cmd_rollback() {
   echo "Rolled back."
 }
 
+cmd_log() {
+  local n="${1:-20}"
+  [[ "$n" =~ ^[0-9]+$ ]] || die "log takes a number of lines."
+  need ssh
+  ssh "$HOST" "tail -n $n '$ROOT/backups/deploy.log'" || die "no deploy log yet at $ROOT/backups/deploy.log (or the server is unreachable)."
+}
+
 case "${1:-}" in
   plan)     cmd_plan ;;
   deploy)   shift; cmd_deploy "$@" ;;
   rollback) shift; cmd_rollback "$@" ;;
   status)   cmd_status ;;
-  *) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  log)      shift; cmd_log "$@" ;;
+  *) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
