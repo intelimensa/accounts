@@ -66,11 +66,11 @@ public readonly partial record struct ReleaseVersion : IComparable<ReleaseVersio
         var right = other.PreRelease.Split('.');
         for (var i = 0; i < Math.Min(left.Length, right.Length); i++)
         {
-            var leftNumeric = long.TryParse(left[i], out var l);
-            var rightNumeric = long.TryParse(right[i], out var r);
+            var leftNumeric = IsNumeric(left[i]);
+            var rightNumeric = IsNumeric(right[i]);
             c = (leftNumeric, rightNumeric) switch
             {
-                (true, true) => l.CompareTo(r),
+                (true, true) => CompareNumeric(left[i], right[i]),
                 (true, false) => -1,   // numeric identifiers sort below alphanumeric ones
                 (false, true) => 1,
                 _ => string.CompareOrdinal(left[i], right[i]),
@@ -78,6 +78,17 @@ public readonly partial record struct ReleaseVersion : IComparable<ReleaseVersio
             if (c != 0) return c;
         }
         return left.Length.CompareTo(right.Length);
+    }
+
+    private static bool IsNumeric(string identifier) => identifier.All(char.IsAsciiDigit);
+
+    /// <summary>Numeric identifiers of any length: by digit count (ignoring leading zeros), then digit by digit.</summary>
+    private static int CompareNumeric(string a, string b)
+    {
+        a = a.TrimStart('0');
+        b = b.TrimStart('0');
+        var c = a.Length.CompareTo(b.Length);
+        return c != 0 ? c : string.CompareOrdinal(a, b);
     }
 
     public static bool operator <(ReleaseVersion a, ReleaseVersion b) => a.CompareTo(b) < 0;
