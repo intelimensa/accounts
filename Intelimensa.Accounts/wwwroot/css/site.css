@@ -71,6 +71,23 @@ body {
   color: var(--ia-accent) !important;
 }
 
+/* Bootstrap's hamburger icon is a fixed dark-grey SVG with a dark border, which vanishes on the dark
+   header (the portal doesn't use data-bs-theme). Draw it as a mask in the heading colour instead. */
+.site-header .navbar-toggler {
+  border-color: var(--ia-border);
+}
+
+.site-header .navbar-toggler:focus {
+  box-shadow: 0 0 0 0.2rem var(--ia-accent-muted);
+}
+
+.site-header .navbar-toggler-icon {
+  background-image: none;
+  background-color: var(--ia-heading);
+  -webkit-mask: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='black' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") center / 100% no-repeat;
+  mask: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='black' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") center / 100% no-repeat;
+}
+
 .brand-logo {
   height: 28px;
   width: auto;
