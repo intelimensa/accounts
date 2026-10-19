@@ -2,7 +2,7 @@
 
 How a build gets from the release script to participants' machines, and how AxoSync decides it
 can trust it. The server side is implemented (`Publishing/`, `Api/Updates/`, `Pages/Staff/Releases`);
-the AxoSync updater and the `publish.sh` rewrite live in the axosync repo.
+the AxoSync updater and the publish scripts (`publish.sh` on macOS, `publish.ps1` on Windows) live in the axosync repo.
 
 ## Trust model
 
@@ -38,7 +38,7 @@ changing all three places together.
 **The shared fixture** `testdata/release-signing-vectors.json` pins the contract: valid signatures for every
 platform plus tampered fields, wrong tag/line endings, a wrong signer and bad encodings, each with the verdict
 every implementation must give. It is checked by `Intelimensa.Accounts.Tests` (`dotnet test`), by AxoSync's
-`UpdateTrustVectorTests` (a byte-identical copy) and by `publish.sh --selftest`. A format change starts here:
+`UpdateTrustVectorTests` (a byte-identical copy) and by `publish.sh --selftest` and `publish.ps1 -SelfTest`. A format change starts here:
 edit `scripts/gen-signing-vectors.py` for the new tag, regenerate (`python3 -I scripts/gen-signing-vectors.py`),
 then run `./sync-vectors.sh --fix` in the workspace root to copy it to axosync and commit in each repo. The
 test key in it is a throwaway: never add it to a trusted-key list.

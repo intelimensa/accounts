@@ -383,7 +383,7 @@ dotnet test Intelimensa.Accounts.Tests/Intelimensa.Accounts.Tests.csproj
 ```
 
 `Intelimensa.Accounts.Tests` is small so far: it runs `ReleaseSigning` against the fixture shared with AxoSync and
-`publish.sh` (`testdata/release-signing-vectors.json`, owned by this repo; see `docs/release-publishing.md`).
+`publish.sh` and `publish.ps1` (`testdata/release-signing-vectors.json`, owned by this repo; see `docs/release-publishing.md`).
 
 ### Dev server
 
