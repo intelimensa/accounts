@@ -6,7 +6,7 @@ a Hetzner-style EU-owned VPS provider in mind (Hetzner / OVHcloud / Scaleway / I
 all work the same way once you have SSH access to an Ubuntu box), but nothing here
 is provider-specific beyond step 1.
 
-Target stack: Ubuntu 24.04 LTS, .NET 10 runtime, Nginx, systemd, Let's Encrypt (certbot).
+Target stack: Ubuntu 22.04 LTS, .NET 10 runtime, Nginx, systemd, Let's Encrypt (certbot).
 
 ---
 
@@ -17,7 +17,12 @@ Target stack: Ubuntu 24.04 LTS, .NET 10 runtime, Nginx, systemd, Let's Encrypt (
 - Smallest useful size: 1 vCPU / 2GB RAM is plenty for this app's cohort scale
   (Hetzner CX22-class or equivalent). SQLite + a small ASP.NET Core app has a light
   footprint.
-- Image: Ubuntu 24.04 LTS.
+- Image: Ubuntu 22.04 LTS. This is what production runs (cyberfolks.ro). It is a Virtuozzo
+  container, not a full VM: the kernel is the host's (`uname -r` shows the host's version, there
+  are no `linux-image` packages), so kernel patches and kernel reboots are the provider's job.
+  The image ships with the provider's `ct-preset-deb` package (apt source `ct-preset.list`
+  and the `vz-override.conf` systemd drop-ins). On `apt upgrade` the config prompts for those
+  files can be answered with the package maintainer's version.
 - Add your SSH public key at creation time instead of a root password.
 - Note the server's public IPv4 (and IPv6 if assigned) — you'll need it for DNS.
 
@@ -52,6 +57,65 @@ sudo apt install -y fail2ban
 
 From here on, do everything as the `harald` user over SSH, not root.
 
+### Patch the base image, then turn on automatic security updates
+
+Provider images can be well behind: production's was installed with packages from 2022 and
+had 159 pending security updates (including openssh, openssl, sudo, libc and systemd) at
+first check. Before anything else:
+
+```bash
+sudo apt update && sudo apt upgrade
+```
+
+Keep your ssh session open, test a second login in a new terminal before closing it, and
+check `/var/run/reboot-required` afterwards (see below for what a reboot means here).
+
+Then install `unattended-upgrades`, which nothing else on a fresh image does:
+
+```bash
+sudo apt install -y unattended-upgrades
+
+# /etc/apt/apt.conf.d/20auto-upgrades
+sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+```
+
+Ubuntu's default `/etc/apt/apt.conf.d/50unattended-upgrades` allows only the
+`${distro_codename}-security` pocket (and ESM), which is what we want: security fixes only, no
+feature updates. It does not touch third-party repos such as `packages.microsoft.com`. Leave
+`Unattended-Upgrade::Automatic-Reboot` at its default (`false`): a reboot takes the single-instance
+site down, so reboots are done by hand.
+
+Verify:
+
+```bash
+sudo unattended-upgrade --dry-run --debug     # shows what it would install, and from which origins
+systemctl list-timers 'apt-daily*'            # the two timers are active
+sudo tail /var/log/unattended-upgrades/unattended-upgrades.log   # after the first day
+```
+
+What this does and doesn't cover:
+
+- **Covered:** nginx, openssl, openssh, sudo, libc, systemd and other Ubuntu security updates.
+  Packages that serve traffic (nginx) are restarted by their own package scripts.
+- **Not covered: the .NET runtime.** It is installed with `dotnet-install.sh` (step 3), not from apt, so
+  neither `apt upgrade` nor unattended-upgrades ever updates it. Check it by hand, see step 3.
+- **Not covered: the kernel.** It belongs to the container host.
+- **Reboots:** when `/var/run/reboot-required` exists (`reboot-required.pkgs` says which package
+  asked, typically `systemd`), schedule a `sudo reboot` when the site can be down for a minute. The
+  app's unit is deliberately disabled at boot (step 8), so after a reboot start it again with
+  `sudo systemctl enable --now intelimensa-accounts`, or `start` if you want it to stay disabled.
+- Look at the server about monthly: `apt list --upgradable`, `ls /var/run/reboot-required*`,
+  `systemctl --failed`. Mail from this box isn't delivered anywhere (outgoing mail goes through
+  the cPanel host's SMTP), so unattended-upgrades can't email you; read its log instead.
+- Packages that came with the image and aren't used here (apache2, bind9, fetchmail, snmp,
+  cifs-utils) are installed but disabled and not listening. They add patch surface without
+  adding anything we use, so removing them is reasonable
+  (`sudo apt remove apache2 apache2-bin apache2-utils apache2-data bind9 fetchmail`, then
+  `sudo apt autoremove`, reviewing apt's list first).
+
 ## 3. Install the .NET 10 runtime
 
 This app targets `net10.0` (see `Intelimensa.Accounts.csproj`). You only need the
@@ -74,6 +138,24 @@ sudo ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet
 
 Verify: `dotnet --list-runtimes` should show `Microsoft.AspNetCore.App 10.x` and
 `Microsoft.NETCore.App 10.x`.
+
+**Updating the runtime is manual.** This install isn't managed by apt, so security patches to
+.NET (a new `10.0.x` roughly monthly, on Patch Tuesday) only arrive when you run the install
+script again. Production was on 10.0.12 while 10.0.13 had been out since 2026-10-13. To update:
+
+```bash
+wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+chmod +x dotnet-install.sh
+sudo ./dotnet-install.sh --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet
+rm dotnet-install.sh
+dotnet --list-runtimes                      # now lists the new 10.0.x beside the old one
+sudo systemctl restart intelimensa-accounts # a running app keeps using the runtime it started with
+```
+
+The app is framework-dependent and rolls forward to the newest installed patch, so no
+redeploy is needed, only the restart. Old runtime directories under
+`/usr/share/dotnet/shared/*/` can be deleted once the new one works. Releases are announced at
+<https://github.com/dotnet/core/releases>; check it when you do the monthly look at the server.
 
 If the apt feed catches up later and you'd rather manage updates via `apt`, the
 original approach was:
