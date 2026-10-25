@@ -328,6 +328,33 @@ namespace Intelimensa.Accounts.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PendingBlobSha256")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("PendingBlobSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PendingBlobStorageKey")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingKekId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("PendingUploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingUploadedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PendingWrappedCek")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublishedByUserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset?>("RetiredAt")
                         .HasColumnType("TEXT");
 

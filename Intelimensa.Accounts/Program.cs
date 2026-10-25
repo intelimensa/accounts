@@ -47,7 +47,7 @@ builder.Services.AddSingleton<IFirmwareStorage, LocalFirmwareStorage>();
 builder.Services.Configure<ConfigDeliveryOptions>(builder.Configuration.GetSection("Configs"));
 builder.Services.AddSingleton<KeyEncryption>();
 builder.Services.AddSingleton<IConfigStorage, LocalConfigStorage>();
-builder.Services.AddScoped<ConfigUploader>();
+builder.Services.AddScoped<ConfigPublisher>();
 builder.Services.AddScoped<ConfigIssuer>();
 builder.Services.AddScoped<ClientInstallRegistry>();
 builder.Services.AddSingleton<InstallNonces>();
@@ -239,6 +239,7 @@ app.MapRazorPages()
 app.MapAuthEndpoints();
 app.MapDeviceEndpoints();
 app.MapConfigEndpoints();
+app.MapConfigPublishingEndpoints();
 app.MapManufacturingEndpoints();
 app.MapReleaseEndpoints();
 app.MapTelemetryEndpoints();

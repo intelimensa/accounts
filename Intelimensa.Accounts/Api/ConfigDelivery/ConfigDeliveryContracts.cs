@@ -30,3 +30,17 @@ public record LeaseResponse(
     string BlobSha256,
     string IssuedAt,
     string NotAfter);
+
+/// <summary>Body of <c>PUT /api/publishing/configs/{key}</c>: creates the config, or renames it.</summary>
+public record ConfigDraftRequest(string? DisplayName);
+
+/// <summary>A config as the publisher API reports it: its live file (what participants get) and any pending one.</summary>
+public record PublishedConfigResponse(
+    string Key,
+    string DisplayName,
+    bool IsDefault,
+    bool Retired,
+    ConfigFileResponse? Live,
+    ConfigFileResponse? Pending);
+
+public record ConfigFileResponse(string Sha256, long SizeBytes, DateTimeOffset? UploadedAt);

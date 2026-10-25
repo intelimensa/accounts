@@ -97,9 +97,11 @@ the build settled. Read it before changing any of this. The server side, in shor
 - **Install proofs** (`Security/InstallProof.cs`, `InstallNonces.cs`, `InstallProofMiddleware.cs`): every request on a
   bound token is signed by the install over method, path, body hash and a server-issued nonce. Logins without an
   install (Quarry, publish scripts) still work and get unbound tokens, which can't fetch configs.
-- **Configs** (`ConfigDelivery/`): staff upload ConfigGen's v2 blob plus its random CEK at `/Staff/Configs`
-  (`ConfigUploader` test-decrypts the pair); the blob goes to `IConfigStorage` (`Configs:StoragePath`), the CEK is
-  wrapped under the KEK (`KeyEncryption`). The v2 format (`ConfigBlob`) has no PBKDF2.
+- **Configs** (`ConfigDelivery/`): the same roles as builds. A Publisher uploads ConfigGen's v2 blob plus its random
+  CEK (`ConfigGen publish`, via `/api/publishing/configs`; or by hand on `/Staff/Configs`), it waits as the config's
+  *pending* file, and Staff publish it (or the Publisher, with `--auto-publish`). `ConfigPublisher` holds the rules for
+  both: test-decrypt the pair, store the blob in `IConfigStorage` (`Configs:StoragePath`), wrap the CEK under the KEK
+  (`KeyEncryption`). The v2 format (`ConfigBlob`) has no PBKDF2.
 - **Delivery** (`Api/ConfigDelivery/`, `ConfigIssuer`): `GET /api/devices/{serial}/config?version=&platform=` wraps the
   CEK to the install's agreement key and the calling build's release secret (`CekWrap`: ECDH + HKDF + AES-GCM) and
   returns it with a signed offline lease (`OfflineLease`, 7 days by default, staff override, never past `ExpiresAt`);

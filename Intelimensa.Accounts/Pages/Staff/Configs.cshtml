@@ -39,6 +39,10 @@
             <button type="submit" class="btn btn-ia-primary w-100">Add Config</button>
         </div>
     </form>
+    <p class="small text-muted mt-2 mb-0">
+        Files normally come from ConfigGen (<code>dotnet run --project ConfigGen -- publish &lt;key&gt;</code>, Publisher role) and
+        wait here as pending until published. Upload by hand only ConfigGen's <code>publish --offline</code> output.
+    </p>
 </div>
 
 @if (!Model.Configs.Any())
@@ -70,7 +74,24 @@
                     }
                     else
                     {
-                        <div class="small text-danger">No file yet: participants assigned this config get nothing.</div>
+                        <div class="small text-danger">No published file yet: participants assigned this config get nothing.</div>
+                    }
+                    @if (config.HasPendingFile)
+                    {
+                        <div class="small text-warning-emphasis text-break mt-1">
+                            <strong>Pending:</strong> uploaded @config.PendingUploadedAt?.ToString("yyyy-MM-dd HH:mm") &middot; @config.PendingBlobSize bytes &middot; SHA-256 @config.PendingBlobSha256
+                        </div>
+                        <div class="d-flex gap-2 mt-1">
+                            <form method="post" asp-page-handler="Publish"
+                                  onsubmit="return confirm('Publish this file? Participants assigned this config get it, with a new key, at their next online launch.');">
+                                <input type="hidden" name="configId" value="@config.Id" />
+                                <button type="submit" class="btn btn-ia-primary btn-sm">Publish</button>
+                            </form>
+                            <form method="post" asp-page-handler="Discard">
+                                <input type="hidden" name="configId" value="@config.Id" />
+                                <button type="submit" class="btn btn-link btn-sm text-danger">Discard</button>
+                            </form>
+                        </div>
                     }
                 </div>
                 <div class="d-flex gap-2">
@@ -104,9 +125,8 @@
                         <input type="file" name="key" accept=".key" class="form-control form-control-sm" required />
                     </div>
                     <div class="col-sm-4">
-                        <button type="submit" class="btn btn-ia-outline btn-sm w-100"
-                                onclick="return @(config.HasFile ? "confirm('Replace this config\\'s file? Clients fetch the new file and key at their next online launch.')" : "true");">
-                            @(config.HasFile ? "Replace file" : "Upload file")
+                        <button type="submit" class="btn btn-ia-outline btn-sm w-100">
+                            Upload @(config.HasPendingFile ? "(replaces the pending file)" : "for review")
                         </button>
                     </div>
                 </form>

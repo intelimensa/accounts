@@ -91,8 +91,14 @@ async Task<string> Upload(byte[] file, string key)
 Check((await Upload(blob, Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)))).Contains("doesn&#x27;t open this config"),
     "an upload whose key doesn't open the file is refused");
 await Upload(blob, Convert.ToBase64String(cek));
-Check(Sql("SELECT BlobSha256 FROM Configs WHERE Key = 'ms5';") == blobSha, "the matching pair is stored");
-Check(!Sql("SELECT WrappedCek FROM Configs WHERE Key = 'ms5';").Contains(Convert.ToBase64String(cek)), "the key is stored wrapped, not as uploaded");
+Check(Sql("SELECT PendingBlobSha256 FROM Configs WHERE Key = 'ms5';") == blobSha && Sql("SELECT BlobSha256 FROM Configs WHERE Key = 'ms5';") == "",
+    "the matching pair is stored as pending, not live");
+Check(!Sql("SELECT PendingWrappedCek FROM Configs WHERE Key = 'ms5';").Contains(Convert.ToBase64String(cek)), "the key is stored wrapped, not as uploaded");
+
+async Task PublishOnPage() => await web.PostAsync("/Staff/Configs?handler=Publish", new FormUrlEncodedContent(new Dictionary<string, string>
+{
+    ["__RequestVerificationToken"] = await Antiforgery("/Staff/Configs"), ["configId"] = configId.ToString(),
+}));
 
 // ---- AxoSync: an install signs in --------------------------------------------------------------------------------------
 var api = new HttpClient { BaseAddress = new Uri(baseUrl) };
@@ -164,6 +170,11 @@ r = await Send(HttpMethod.Get, ConfigPath, null, access, signing);
 Check(r.StatusCode == HttpStatusCode.NotFound && await Error(r) == "not_assigned", "no assignment: not_assigned");
 
 Sql($"UPDATE AccountDevices SET AssignedConfigId = {configId} WHERE BciDeviceId = '{unitId}';");
+r = await Send(HttpMethod.Get, ConfigPath, null, access, signing);
+Check(r.StatusCode == HttpStatusCode.NotFound && await Error(r) == "not_assigned", "assigned, but the file is only pending: nothing yet");
+await PublishOnPage();
+Check(Sql("SELECT BlobSha256 FROM Configs WHERE Key = 'ms5';") == blobSha && Sql("SELECT PendingBlobSha256 FROM Configs WHERE Key = 'ms5';") == "",
+    "Staff publish the pending file");
 Console.WriteLine("Delivery");
 r = await Send(HttpMethod.Get, ConfigPath, null, access, null);
 Check(r.StatusCode == HttpStatusCode.Unauthorized && await Error(r) == "install_proof_required", "a bound token without a proof gets nothing");
@@ -221,6 +232,41 @@ Check(r.IsSuccessStatusCode, "still work for the update check");
 r = await Send(HttpMethod.Get, ConfigPath, null, unbound, null);
 Check(r.StatusCode == HttpStatusCode.Forbidden, "but get no config");
 
+// ---- ConfigGen's path: the publisher API ------------------------------------------------------------------------------
+Console.WriteLine("Publishing a config through the publisher API (ConfigGen)");
+var cek2 = RandomNumberGenerator.GetBytes(32);
+var blob2 = ConfigBlob.Encrypt(Encoding.UTF8.GetBytes(plaintext.Replace("0.25", "0.5")), cek2, RandomNumberGenerator.GetBytes(12));
+var blob2Sha = Convert.ToHexString(SHA256.HashData(blob2)).ToLowerInvariant();
+r = await Send(HttpMethod.Put, "/api/publishing/configs/ms5", new { displayName = "MindStone 5" }, unbound, null);
+Check(r.IsSuccessStatusCode && Sql("SELECT DisplayName FROM Configs WHERE Key = 'ms5';") == "MindStone 5", "PUT renames an existing config");
+async Task<HttpResponseMessage> PutFile(byte[] file, byte[] key)
+{
+    var put = new HttpRequestMessage(HttpMethod.Put, "/api/publishing/configs/ms5/file") { Content = new ByteArrayContent(file) };
+    put.Headers.Authorization = new AuthenticationHeaderValue("Bearer", unbound);
+    put.Headers.Add("X-Config-Key", Convert.ToBase64String(key));
+    return await api.SendAsync(put);
+}
+r = await PutFile(blob2, cek);
+Check(r.StatusCode == HttpStatusCode.BadRequest, "an upload whose key doesn't fit is refused");
+r = await PutFile(blob2, cek2);
+var status = await r.Content.ReadFromJsonAsync<JsonElement>();
+Check(r.IsSuccessStatusCode && status.GetProperty("pending").GetProperty("sha256").GetString() == blob2Sha &&
+      status.GetProperty("live").GetProperty("sha256").GetString() == blobSha, "the new file is pending; the live one is unchanged");
+r = await Send(HttpMethod.Get, ConfigPath, null, access, signing);
+Check((await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("blobSha256").GetString() == blobSha, "participants still get the live file");
+r = await Send(HttpMethod.Post, "/api/publishing/configs/ms5/publish", null, unbound, null);
+Check(r.IsSuccessStatusCode, "publishing through the API (--auto-publish)");
+r = await Send(HttpMethod.Get, ConfigPath, null, access, signing);
+var rotated = await r.Content.ReadFromJsonAsync<JsonElement>();
+var wr = rotated.GetProperty("wrappedCek");
+var rotatedCek = CekWrap.Unwrap(agreement, new WrappedCek(Convert.FromBase64String(wr.GetProperty("ephemeralKey").GetString()!),
+    Convert.FromBase64String(wr.GetProperty("nonce").GetString()!), Convert.FromBase64String(wr.GetProperty("ciphertext").GetString()!),
+    Convert.FromBase64String(wr.GetProperty("tag").GetString()!)), devSecret, installId, "ms5", blob2Sha);
+Check(rotated.GetProperty("blobSha256").GetString() == blob2Sha && rotatedCek.SequenceEqual(cek2), "now the new file is delivered, with its new key");
+r = await Send(HttpMethod.Post, "/api/publishing/configs/ms5/publish", null, unbound, null);
+Check(r.StatusCode == HttpStatusCode.Conflict, "publishing with nothing pending: 409");
+Check(Directory.GetFiles(Path.Combine(dir, "config-files")).Length == 1, "the replaced blob is deleted from storage");
+
 // ---- a published build with its release secret, then blocked -----------------------------------------------------------
 Console.WriteLine("A published build");
 var secret = RandomNumberGenerator.GetBytes(32);
@@ -243,8 +289,8 @@ var forRelease = await r.Content.ReadFromJsonAsync<JsonElement>();
 var w2 = forRelease.GetProperty("wrappedCek");
 var wrapped2 = new WrappedCek(Convert.FromBase64String(w2.GetProperty("ephemeralKey").GetString()!), Convert.FromBase64String(w2.GetProperty("nonce").GetString()!),
     Convert.FromBase64String(w2.GetProperty("ciphertext").GetString()!), Convert.FromBase64String(w2.GetProperty("tag").GetString()!));
-Check(CekWrap.Unwrap(agreement, wrapped2, secret, installId, "ms5", blobSha).SequenceEqual(cek), "the published build opens its key with its own secret");
-Check(Throws(() => CekWrap.Unwrap(agreement, wrapped2, devSecret, installId, "ms5", blobSha)), "and only with its own");
+Check(CekWrap.Unwrap(agreement, wrapped2, secret, installId, "ms5", blob2Sha).SequenceEqual(cek2), "the published build opens its key with its own secret");
+Check(Throws(() => CekWrap.Unwrap(agreement, wrapped2, devSecret, installId, "ms5", blob2Sha)), "and only with its own");
 Sql("UPDATE ReleaseArtifacts SET ConfigDeliveryBlockedAt = '2026-10-25 00:00:00+00:00';");
 r = await Send(HttpMethod.Get, ReleasePath, null, access, signing);
 Check(r.StatusCode == HttpStatusCode.Forbidden && await Error(r) == "build_not_supported", "a blocked build gets build_not_supported");

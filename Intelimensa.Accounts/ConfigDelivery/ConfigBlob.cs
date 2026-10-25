@@ -8,7 +8,7 @@ namespace Intelimensa.Accounts.ConfigDelivery;
 /// random content key (CEK), with the 5-byte header as associated data. Unlike v1 there is no PBKDF2:
 /// v1 stretched a human passphrase, and a random 256-bit key has nothing to stretch. Pinned by
 /// <c>testdata/config-delivery-vectors.json</c> (<c>scripts/gen-config-delivery-vectors.py</c>).
-/// The server never decrypts a blob except to check an upload (<see cref="ConfigUploader"/>).
+/// The server never decrypts a blob except to check an upload (<see cref="ConfigPublisher"/>).
 /// </summary>
 public static class ConfigBlob
 {

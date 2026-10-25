@@ -10,13 +10,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Intelimensa.Accounts.Pages.Staff;
 
 /// <summary>
-/// Config rows and their files: create a config, upload ConfigGen's <c>.cfg</c> + <c>.key</c> pair to it (replacing
-/// a file rotates its key), mark the default the assignment form pre-selects, retire one. The upload rules live in
-/// <see cref="ConfigUploader"/>.
+/// Config rows and their files: create a config, upload a file to it by hand (ConfigGen's <c>publish --offline</c>
+/// output; normally ConfigGen uploads through the publisher API), publish or discard the pending file (publishing a new
+/// file rotates the config's key), mark the default the assignment form pre-selects, retire one. The rules live in
+/// <see cref="ConfigPublisher"/>, shared with the publisher API.
 /// </summary>
-[RequestSizeLimit(ConfigUploader.MaxBlobBytes + 64 * 1024)]
-[RequestFormLimits(MultipartBodyLengthLimit = ConfigUploader.MaxBlobBytes + 64 * 1024)]
-public class ConfigsModel(ApplicationDbContext db, ConfigUploader uploader, KeyEncryption keys) : PageModel
+[RequestSizeLimit(ConfigPublisher.MaxBlobBytes + 64 * 1024)]
+[RequestFormLimits(MultipartBodyLengthLimit = ConfigPublisher.MaxBlobBytes + 64 * 1024)]
+public class ConfigsModel(ApplicationDbContext db, ConfigPublisher publisher, KeyEncryption keys) : PageModel
 {
     public List<Config> Configs { get; private set; } = [];
 
@@ -52,12 +53,8 @@ public class ConfigsModel(ApplicationDbContext db, ConfigUploader uploader, KeyE
         if (await db.Configs.AnyAsync(c => c.Key == key))
             return await FailAsync($"A config with key '{key}' already exists.");
 
-        db.Configs.Add(new Config
-        {
-            Key = key,
-            DisplayName = Input.DisplayName.Trim(),
-        });
-        await db.SaveChangesAsync();
+        var result = await publisher.CreateOrUpdateAsync(key, Input.DisplayName);
+        if (!result.Ok) return await FailAsync(result.Message!);
 
         StatusMessage = $"Created config {key}. Upload its file next.";
         return RedirectToPage();
@@ -67,7 +64,7 @@ public class ConfigsModel(ApplicationDbContext db, ConfigUploader uploader, KeyE
     {
         if (blob is null || blob.Length == 0 || key is null || key.Length == 0)
             return await FailAsync("Choose both files: the .cfg and the .key ConfigGen wrote.");
-        if (blob.Length > ConfigUploader.MaxBlobBytes || key.Length > 1024)
+        if (blob.Length > ConfigPublisher.MaxBlobBytes || key.Length > 1024)
             return await FailAsync("Those files are too large to be a config and its key.");
 
         byte[] bytes;
@@ -80,12 +77,39 @@ public class ConfigsModel(ApplicationDbContext db, ConfigUploader uploader, KeyE
         using (var reader = new StreamReader(key.OpenReadStream()))
             keyText = await reader.ReadToEndAsync(ct);
 
-        var error = await uploader.UploadAsync(configId, bytes, keyText, User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);
-        if (error is not null) return await FailAsync(error);
+        var config = await db.Configs.FirstOrDefaultAsync(c => c.Id == configId, ct);
+        if (config is null) return NotFound();
+        var result = await publisher.UploadAsync(config.Key, bytes, keyText, UserId, ct);
+        if (!result.Ok) return await FailAsync(result.Message!);
 
-        StatusMessage = "Config file uploaded. Delete the .key file from your computer now: the server keeps the only copy.";
+        StatusMessage = $"Uploaded a pending file for {config.DisplayName}: check it and publish it below. " +
+                        "Delete the .key file from your computer now: the server keeps the only copy.";
         return RedirectToPage();
     }
+
+    public async Task<IActionResult> OnPostPublishAsync(int configId)
+    {
+        var config = await db.Configs.FirstOrDefaultAsync(c => c.Id == configId);
+        if (config is null) return NotFound();
+        var result = await publisher.PublishAsync(config.Key, UserId);
+        if (!result.Ok) return await FailAsync(result.Message!);
+
+        StatusMessage = $"Published the new file for {config.DisplayName}. Clients fetch it, with its new key, at their next online launch.";
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostDiscardAsync(int configId)
+    {
+        var config = await db.Configs.FirstOrDefaultAsync(c => c.Id == configId);
+        if (config is null) return NotFound();
+        var result = await publisher.DiscardPendingAsync(config.Key);
+        if (!result.Ok) return await FailAsync(result.Message!);
+
+        StatusMessage = $"Discarded the pending file for {config.DisplayName}.";
+        return RedirectToPage();
+    }
+
+    private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     public async Task<IActionResult> OnPostMakeDefaultAsync(int configId)
     {

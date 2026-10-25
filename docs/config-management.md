@@ -216,31 +216,42 @@ Debug builds carry no release secret. They keep the local `ConfigPasswords` path
 development server may accept one fixed development secret (`Configs:DevelopmentReleaseSecret`),
 which production never sets.
 
-## 3. Producing and uploading a config (staff, offline)
+## 3. Producing and publishing a config
 
-ConfigGen gets a "publish" mode. For each catalog entry, it:
+Configs follow the same roles as AxoSync builds: a **Publisher** uploads, the upload waits as a draft
+(here: the config's *pending* file), and **Staff** publish it. A Publisher may publish its own upload
+only by asking for it explicitly (`--auto-publish`, as with the release scripts).
 
+`ConfigGen publish <key>...` (axosync repo) does it, for each named catalog entry:
+
+- merges `ui-defaults.ini` into the source, as the plain ConfigGen run does;
 - generates a **fresh random content key (CEK)**, 32 bytes;
-- encrypts the INI file in a **new blob format, v2**: `"IMCF" ‖ version(1)=2 ‖ nonce(12) ‖
-  tag(16) ‖ ciphertext`, AES-256-GCM with the CEK used directly. The v1 format's PBKDF2 at 600k
-  iterations exists to stretch a human passphrase; a random 256-bit key needs none, and since the
-  client decryption is being rewritten anyway (section 2), the cost goes;
-- writes `<stem>.cfg` (the blob) and `<stem>.key` (the CEK).
+- encrypts the INI in a **new blob format, v2**: `"IMCF" ‖ version(1)=2 ‖ nonce(12) ‖ tag(16) ‖
+  ciphertext`, AES-256-GCM with the CEK used directly and the 5-byte header as associated data. The v1
+  format's PBKDF2 at 600k iterations stretched a human passphrase; a random 256-bit key needs none;
+- signs in with a Publisher account (as `publish.sh` does) and calls the publisher API
+  (`/api/publishing/configs`): `PUT /{key}` creates or renames the config, `PUT /{key}/file` uploads the
+  blob with its key in the `X-Config-Key` header, and with `--auto-publish`, `POST /{key}/publish` makes it
+  live. **The key never touches the disk**, and ConfigGen checks the server's SHA-256 against its own.
 
-Staff upload both at `/Staff/Configs` to a `Config` row (uploading to a row that has a file
-replaces it). The server:
+`ConfigGen publish --offline <dir>` writes `<key>.cfg` and `<key>.key` instead, for upload by hand on
+`/Staff/Configs`; delete the `.key` file afterwards.
+
+Every upload, through the API or the page, goes through the same rules (`ConfigDelivery/ConfigPublisher.cs`).
+The server:
 
 - validates the blob header and length;
-- **test-decrypts the blob with the supplied key** and checks the result parses as INI, so a
-  mismatched pair is rejected at upload rather than on a participant's machine. The plaintext is
-  only held in memory and then discarded;
-- computes the blob's SHA-256;
-- stores the blob through an `IConfigStorage` outside the app directory (same shape as
-  `IReleaseStorage`);
-- stores the CEK **wrapped under the server KEK**, so a leaked DB or backup alone yields no keys.
+- **test-decrypts the blob with the supplied key** and checks the result is text with INI sections, so a
+  mismatched pair is rejected at upload rather than on a participant's machine. The plaintext is only
+  held in memory and then discarded;
+- stores the blob through `IConfigStorage`, under its SHA-256, outside the app directory;
+- stores the CEK **wrapped under the server KEK**, so a leaked DB or backup alone yields no keys;
+- keeps both as the config's **pending** file, replacing any earlier pending one. Participants keep
+  getting the live file.
 
-Staff delete the `.key` file afterwards; the server is the only long-lived holder of CEKs. A
-config with no uploaded file, or a retired one (`RetiredAt`), isn't delivered or newly assigned.
+Staff review it on `/Staff/Configs` and **Publish** it (it replaces the live file, which rotates the
+config's key; clients pick it up at their next online launch) or **Discard** it. A config with no
+published file, or a retired one (`RetiredAt`), isn't delivered or newly assigned.
 
 Once this ships, `ConfigPasswords.cs` and the configs embedded in the installer go away from
 Release builds.
@@ -622,5 +633,5 @@ departed from it:
   `no_config` (404) and `config_delivery_unavailable` (503) from the config endpoints.
 - **The staff alert** for many new installs is a warning in the server log, not an email.
 - **Testing:** `scripts/test-server.sh start` turns delivery on with throwaway keys, and
-  `dotnet run scripts/config-delivery-smoke.cs` drives the whole flow against it as AxoSync would (about 40
-  checks). The format tests are `ConfigDeliveryVectorTests`.
+  `dotnet run scripts/config-delivery-smoke.cs` drives the whole flow against it as AxoSync and ConfigGen
+  would (about 50 checks). The format tests are `ConfigDeliveryVectorTests`.
