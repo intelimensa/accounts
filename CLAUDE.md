@@ -437,7 +437,7 @@ others keep a byte-identical **copy**, and each side tests itself against it. Th
 | Release signing | `testdata/release-signing-vectors.json` | owner | `scripts/gen-signing-vectors.py`; copy in `axosync` (branch `remote-account` only) |
 | Serial numbers | `testdata/serial-number-vectors.json` | owner | `scripts/gen-serial-vectors.py`; copy in `firmware/quarry/tests/testdata/` |
 | JSON API | `testdata/api-vectors.json` | owner | `scripts/gen-api-vectors.py`; copies in `firmware/quarry/tests/testdata/` and `axosync` (`remote-account` only) |
-| Config delivery | `testdata/config-delivery-vectors.json` | owner | `scripts/gen-config-delivery-vectors.py` (plain-Python crypto, deterministic); copy in `axosync/ConfigGen/testdata/` (`ConfigGen selftest`; branch `remote-config`) |
+| Config delivery | `testdata/config-delivery-vectors.json` | owner | `scripts/gen-config-delivery-vectors.py` (plain-Python crypto, deterministic); copy in `axosync/AxoSync.Tests.Unit/ConfigDelivery/` (AxoSync's `ConfigDeliveryVectorTests` and `ConfigGen selftest`; branch `remote-config`) |
 | Firmware images | `testdata/firmware-image-vectors.json` | copy | owner: `firmware/quarry/tests/` |
 | Unit identity | `testdata/identity-vectors.json` | copy | owner: `firmware/testdata/` |
 
