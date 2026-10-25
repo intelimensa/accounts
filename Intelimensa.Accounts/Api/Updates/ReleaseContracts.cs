@@ -30,5 +30,6 @@ public record PublishedReleaseResponse(
     DateTimeOffset? PublishedAt,
     IReadOnlyList<PublishedArtifactResponse> Artifacts);
 
+/// <summary><paramref name="HasReleaseSecret"/>: the build was uploaded with its release secret, so it can receive configs.</summary>
 public record PublishedArtifactResponse(
-    string Platform, string FileName, long SizeBytes, string Sha256, bool Signed);
+    string Platform, string FileName, long SizeBytes, string Sha256, bool Signed, bool HasReleaseSecret = false);

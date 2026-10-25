@@ -29,6 +29,12 @@ namespace Intelimensa.Accounts.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("MaxInstallsOverride")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("OfflineLeaseDaysOverride")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
@@ -239,27 +245,102 @@ namespace Intelimensa.Accounts.Migrations
                     b.ToTable("BciDeviceEvents");
                 });
 
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ClientInstall", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AgreementKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AppVersion")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeyThumbprint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("RegisteredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SigningKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId", "KeyThumbprint")
+                        .IsUnique();
+
+                    b.ToTable("ClientInstalls");
+                });
+
             modelBuilder.Entity("Intelimensa.Accounts.Models.Config", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("BlobSha256")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("BlobSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BlobStorageKey")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("CurrentVersion")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("DisplayName")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("KekId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("UploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UploadedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WrappedCek")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -270,35 +351,49 @@ namespace Intelimensa.Accounts.Migrations
                     b.ToTable("Configs");
                 });
 
-            modelBuilder.Entity("Intelimensa.Accounts.Models.Device", b =>
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ConfigKeyIssuance", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("AccountDeviceId")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("AccountId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset?>("LastSeenAt")
+                    b.Property<string>("AppPlatform")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("Platform")
+                    b.Property<string>("AppVersion")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BlobSha256")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClientInstallId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ConfigId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("PublicKey")
+                    b.Property<DateTimeOffset>("IssuedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("RegisteredAt")
+                    b.Property<DateTimeOffset>("LeaseNotAfter")
                         .HasColumnType("TEXT");
-
-                    b.Property<bool>("Revoked")
-                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
 
-                    b.ToTable("Devices");
+                    b.HasIndex("ClientInstallId");
+
+                    b.ToTable("ConfigKeyIssuances");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.FirmwareBuild", b =>
@@ -367,6 +462,9 @@ namespace Intelimensa.Accounts.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ClientInstallId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -388,6 +486,8 @@ namespace Intelimensa.Accounts.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ClientInstallId");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
@@ -436,6 +536,9 @@ namespace Intelimensa.Accounts.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTimeOffset?>("ConfigDeliveryBlockedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("FileName")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -445,6 +548,9 @@ namespace Intelimensa.Accounts.Migrations
 
                     b.Property<int>("ReleaseId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReleaseSecretKekId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Sha256")
                         .IsRequired()
@@ -461,6 +567,9 @@ namespace Intelimensa.Accounts.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WrappedReleaseSecret")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -725,10 +834,10 @@ namespace Intelimensa.Accounts.Migrations
                     b.Navigation("BciDevice");
                 });
 
-            modelBuilder.Entity("Intelimensa.Accounts.Models.Device", b =>
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ClientInstall", b =>
                 {
                     b.HasOne("Intelimensa.Accounts.Models.Account", "Account")
-                        .WithMany("Devices")
+                        .WithMany("ClientInstalls")
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -738,11 +847,18 @@ namespace Intelimensa.Accounts.Migrations
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.RefreshToken", b =>
                 {
+                    b.HasOne("Intelimensa.Accounts.Models.ClientInstall", "ClientInstall")
+                        .WithMany()
+                        .HasForeignKey("ClientInstallId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("Intelimensa.Accounts.Models.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ClientInstall");
 
                     b.Navigation("User");
                 });
@@ -843,7 +959,7 @@ namespace Intelimensa.Accounts.Migrations
                 {
                     b.Navigation("AccountDevices");
 
-                    b.Navigation("Devices");
+                    b.Navigation("ClientInstalls");
 
                     b.Navigation("StudyParticipation");
                 });

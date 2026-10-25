@@ -9,7 +9,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<Account> Accounts => Set<Account>();
 
-    public DbSet<Device> Devices => Set<Device>();
+    public DbSet<ClientInstall> ClientInstalls => Set<ClientInstall>();
+
+    public DbSet<ConfigKeyIssuance> ConfigKeyIssuances => Set<ConfigKeyIssuance>();
 
     public DbSet<Config> Configs => Set<Config>();
 
@@ -45,12 +47,21 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<Device>(entity =>
+        builder.Entity<ClientInstall>(entity =>
         {
-            entity.HasOne(d => d.Account)
-                .WithMany(a => a.Devices)
-                .HasForeignKey(d => d.AccountId)
+            entity.HasIndex(i => new { i.AccountId, i.KeyThumbprint }).IsUnique();
+            entity.Property(i => i.Platform).HasConversion<string>();
+
+            entity.HasOne(i => i.Account)
+                .WithMany(a => a.ClientInstalls)
+                .HasForeignKey(i => i.AccountId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ConfigKeyIssuance>(entity =>
+        {
+            entity.HasIndex(i => i.AccountId);
+            entity.HasIndex(i => i.ClientInstallId);
         });
 
         builder.Entity<Config>(entity =>
@@ -62,6 +73,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         {
             entity.HasIndex(r => r.TokenHash).IsUnique();
             entity.HasIndex(r => r.UserId);
+
+            entity.HasOne(r => r.ClientInstall)
+                .WithMany()
+                .HasForeignKey(r => r.ClientInstallId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(r => r.User)
                 .WithMany()

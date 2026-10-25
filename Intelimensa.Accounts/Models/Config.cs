@@ -1,8 +1,10 @@
 namespace Intelimensa.Accounts.Models;
 
 /// <summary>
-/// Config metadata. The encrypted payload itself is not modeled yet -- that's a
-/// config-delivery-phase decision (envelope encryption / CEK storage), not a data-model one.
+/// One config: its metadata, and once staff have uploaded it, its encrypted blob (v2 format, in
+/// <c>IConfigStorage</c>) and content key (CEK), wrapped under the server's KEK. Configs aren't versioned:
+/// a different config is a new row, and replacing the file is only for rotating its key or a fix.
+/// See docs/config-management.md.
 /// </summary>
 public class Config
 {
@@ -13,7 +15,33 @@ public class Config
 
     public required string DisplayName { get; set; }
 
-    public int CurrentVersion { get; set; }
+    /// <summary>The one config the staff assignment form pre-selects. At most one row has it.</summary>
+    public bool IsDefault { get; set; }
+
+    /// <summary>A retired config is neither delivered nor offered for new assignments.</summary>
+    public DateTimeOffset? RetiredAt { get; set; }
+
+    /// <summary>Opaque key understood by <c>IConfigStorage</c>; null until a file is uploaded.</summary>
+    public string? BlobStorageKey { get; set; }
+
+    /// <summary>Lowercase hex SHA-256 of the blob: its ETag, and part of every lease and wrapped key.</summary>
+    public string? BlobSha256 { get; set; }
+
+    public long? BlobSize { get; set; }
+
+    /// <summary>The CEK, wrapped by <c>KeyEncryption</c> for purpose <c>config-cek/{Key}</c>.</summary>
+    public string? WrappedCek { get; set; }
+
+    /// <summary>Which KEK wrapped <see cref="WrappedCek"/>.</summary>
+    public string? KekId { get; set; }
+
+    public DateTimeOffset? UploadedAt { get; set; }
+
+    public string? UploadedByUserId { get; set; }
+
+    public bool HasFile => BlobStorageKey is not null && WrappedCek is not null && BlobSha256 is not null;
+
+    public bool IsDeliverable => HasFile && RetiredAt is null;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

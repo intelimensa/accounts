@@ -1,8 +1,10 @@
 using Intelimensa.Accounts.Api.Auth;
+using Intelimensa.Accounts.Api.ConfigDelivery;
 using Intelimensa.Accounts.Api.Devices;
 using Intelimensa.Accounts.Api.Manufacturing;
 using Intelimensa.Accounts.Api.Updates;
 using Intelimensa.Accounts.Api.Telemetry;
+using Intelimensa.Accounts.ConfigDelivery;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Email;
 using Intelimensa.Accounts.Manufacturing;
@@ -39,6 +41,16 @@ builder.Services.Configure<ReleasePublishingOptions>(builder.Configuration.GetSe
 builder.Services.AddScoped<ReleasePublisher>();
 builder.Services.Configure<FirmwareStorageOptions>(builder.Configuration.GetSection("Firmware"));
 builder.Services.AddSingleton<IFirmwareStorage, LocalFirmwareStorage>();
+
+// Config delivery (docs/config-management.md). Without Configs:KeyEncryptionKey and Configs:LeaseSigningKey the
+// server runs as before and the config endpoints answer 503; that is the feature's switch.
+builder.Services.Configure<ConfigDeliveryOptions>(builder.Configuration.GetSection("Configs"));
+builder.Services.AddSingleton<KeyEncryption>();
+builder.Services.AddSingleton<IConfigStorage, LocalConfigStorage>();
+builder.Services.AddScoped<ConfigUploader>();
+builder.Services.AddScoped<ConfigIssuer>();
+builder.Services.AddScoped<ClientInstallRegistry>();
+builder.Services.AddSingleton<InstallNonces>();
 
 builder.Services.AddScoped<UnitProvisioning>();
 builder.Services.AddOptions<ManufacturingOptions>()
@@ -157,6 +169,13 @@ builder.Services.AddAuthorization(options =>
         .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser());
 
+    // AxoSync's config delivery (JWT): only a token bound to a registered client install. Its proof on each
+    // request is checked by InstallProofMiddleware, which every bound token goes through.
+    options.AddPolicy("InstallClient", policy => policy
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .RequireClaim(TokenService.ClientInstallClaim));
+
     // The publish script's API (JWT). Its own role, so publishing builds is neither Staff's nor a
     // Manufacturer's job and can be given to a build machine's account alone.
     options.AddPolicy("Publisher", policy => policy
@@ -173,6 +192,17 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseMiddleware<InstallNonceMiddleware>();
+
+// A Debug build's release secret must never open configs on the real server.
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Configs:DevelopmentReleaseSecret"]) && !app.Environment.IsDevelopment())
+    throw new InvalidOperationException("Configs:DevelopmentReleaseSecret is only allowed in Development.");
+if (builder.Configuration["Configs:DevelopmentReleaseSecret"] is { Length: > 0 } devSecret &&
+    Convert.FromBase64String(devSecret).Length != CekWrap.ReleaseSecretSize)
+    throw new InvalidOperationException("Configs:DevelopmentReleaseSecret must be 32 bytes, base64.");
+// Constructing it checks both delivery secrets' formats now rather than at the first request.
+if (!app.Services.GetRequiredService<KeyEncryption>().IsAvailable && !app.Environment.IsDevelopment())
+    app.Logger.LogWarning("Configs:KeyEncryptionKey or Configs:LeaseSigningKey is not set: config delivery is off.");
 
 if (string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]) && !app.Environment.IsDevelopment())
     app.Logger.LogWarning("Email:Host is not set: confirmation emails are only logged, not sent, so new accounts cannot confirm their address.");
@@ -201,12 +231,14 @@ app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<InstallProofMiddleware>();
 
 app.MapStaticAssets();
 app.MapRazorPages()
    .WithStaticAssets();
 app.MapAuthEndpoints();
 app.MapDeviceEndpoints();
+app.MapConfigEndpoints();
 app.MapManufacturingEndpoints();
 app.MapReleaseEndpoints();
 app.MapTelemetryEndpoints();

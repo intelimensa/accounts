@@ -38,13 +38,14 @@
                     <label class="form-label small mb-0">Assigned config</label>
                     <select name="assignedConfigId" class="form-select form-select-sm">
                         <option value="">&mdash; none &mdash;</option>
-                        @foreach (var config in Model.Configs)
+                        @{ var preselected = pairing.AssignedConfigId ?? Model.DefaultConfigId; }
+                        @foreach (var config in Model.Configs.Where(c => c.RetiredAt is null || c.Id == pairing.AssignedConfigId))
                         {
-                            <option value="@config.Id" selected="@(config.Id == pairing.AssignedConfigId)">@config.DisplayName</option>
+                            <option value="@config.Id" selected="@(config.Id == preselected)">@config.DisplayName@(config.IsDefault ? " (default)" : "")@(config.RetiredAt is not null ? " (retired)" : "")</option>
                         }
                     </select>
                 </div>
-                <button type="submit" class="btn btn-ia-primary btn-sm">Save</button>
+                <button type="submit" class="btn btn-ia-primary btn-sm">@(pairing.AssignedConfigId is null ? "Assign" : "Save")</button>
             </form>
             @if (pairing.UnassignedAt is null)
             {

@@ -61,6 +61,16 @@
                 <strong>@account.RegisteredDeviceCount</strong>
             </div>
             <div>
+                <label class="form-label small mb-0" title="AxoSync installations signed in / the limit (blank = @Model.DefaultMaxInstalls)">Installs (@account.InstallCount) limit</label>
+                <input type="number" min="0" max="50" name="maxInstallsOverride" class="form-control form-control-sm" style="width: 6rem;"
+                       value="@account.MaxInstallsOverride" placeholder="@Model.DefaultMaxInstalls" />
+            </div>
+            <div>
+                <label class="form-label small mb-0" title="Days AxoSync may run offline (blank = @Model.DefaultLeaseDays, at most @Model.MaxLeaseDays)">Offline days</label>
+                <input type="number" min="0" max="@Model.MaxLeaseDays" name="offlineLeaseDaysOverride" class="form-control form-control-sm" style="width: 6rem;"
+                       value="@account.OfflineLeaseDaysOverride" placeholder="@Model.DefaultLeaseDays" />
+            </div>
+            <div>
                 @if (account.Status == AccountStatus.Pending)
                 {
                     <button type="submit" asp-page-handler="Approve" class="btn btn-ia-primary btn-sm"

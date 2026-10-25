@@ -93,7 +93,30 @@
                             {
                                 <div class="text-muted">Signed</div>
                             }
+                            @if (artifact.WrappedReleaseSecret is null)
+                            {
+                                <div class="text-muted">No release secret: this build gets no configs.</div>
+                            }
+                            else if (artifact.ConfigDeliveryBlockedAt is { } blockedAt)
+                            {
+                                <div class="text-danger">Config delivery blocked since @blockedAt.ToString("yyyy-MM-dd").</div>
+                            }
+                            else
+                            {
+                                <div class="text-muted">Receives configs</div>
+                            }
                         </div>
+                        @if (artifact.WrappedReleaseSecret is not null)
+                        {
+                            <form method="post" asp-page-handler="ConfigDelivery"
+                                  onsubmit="return @(artifact.ConfigDeliveryBlockedAt is null ? "confirm('Stop delivering configs to this build? Its users must update.')" : "true");">
+                                <input type="hidden" name="artifactId" value="@artifact.Id" />
+                                <input type="hidden" name="blocked" value="@(artifact.ConfigDeliveryBlockedAt is null ? "true" : "false")" />
+                                <button type="submit" class="btn btn-link btn-sm @(artifact.ConfigDeliveryBlockedAt is null ? "text-danger" : "")">
+                                    @(artifact.ConfigDeliveryBlockedAt is null ? "Block configs" : "Allow configs")
+                                </button>
+                            </form>
+                        }
                     }
                     else
                     {
@@ -107,6 +130,7 @@
                             <input type="hidden" name="platform" value="@platform" />
                             <input type="file" name="file" class="form-control form-control-sm" required />
                             <input type="text" name="signature" class="form-control form-control-sm" placeholder="Signature (base64)" @(Model.SignatureRequired ? "required" : "") />
+                            <input type="text" name="releaseSecret" class="form-control form-control-sm" placeholder="Release secret (base64, optional)" autocomplete="off" />
                             <button type="submit" class="btn btn-ia-outline btn-sm">@(artifact is null ? "Upload" : "Replace")</button>
                         </form>
                     }

@@ -20,7 +20,13 @@ public class Account
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    public List<Device> Devices { get; set; } = [];
+    public List<ClientInstall> ClientInstalls { get; set; } = [];
+
+    /// <summary>Staff override of <c>Configs:MaxInstallsPerAccount</c>; null = the default.</summary>
+    public int? MaxInstallsOverride { get; set; }
+
+    /// <summary>Staff override of <c>Configs:OfflineLeaseDays</c>, capped at <c>Configs:MaxOfflineLeaseDays</c>; null = the default.</summary>
+    public int? OfflineLeaseDaysOverride { get; set; }
 
     public List<AccountDevice> AccountDevices { get; set; } = [];
 

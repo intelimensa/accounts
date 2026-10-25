@@ -17,10 +17,9 @@ unless the project's scope actually changes.
 **Status**: data model, EF Core/Identity plumbing, auth, and staff config-assignment are
 implemented — cookie login for the web portal, `POST /api/auth/{login,refresh,logout}` issuing
 JWT + refresh tokens for AxoSync (see "Auth flow" below), and a `/Staff` area for assigning
-configs to accounts (see "Staff area" below). Config encryption/delivery and device registration
-are still just the plan below, not implemented (config delivery: see `docs/config-management.md`). Treat sections below as the plan to implement
-except "Data model", "Auth flow", and "Staff area", which now reflect real code — check the files
-directly if in doubt.
+configs to accounts (see "Staff area" below). Config delivery's server side is built on the
+`remote-config` branch (see "Config delivery" below and `docs/config-management.md`); AxoSync's side isn't
+yet. Check the files directly if in doubt.
 
 ## Why this is a separate service (not a WordPress plugin)
 
@@ -69,13 +68,13 @@ rather than trusting this table to stay in sync:
 |---|---|
 | `AspNetUsers` (`ApplicationUser : IdentityUser`) | email, password hash (Argon2id), created_at. ASP.NET Core Identity owns this table — there's no separate hand-rolled `Users` table. |
 | `Accounts` | user_id (1:1, unique), status (active/revoked), expires_at. Config assignment is per registered unit (`AccountDevice.AssignedConfigId`), not per account. |
-| `Devices` | one row per registered client machine — id (guid), account_id, public_key (nullable), platform, registered_at, last_seen_at, revoked |
-| `Configs` | key (unique, matches AxoSync's config stems e.g. `ms2`/`ms5`/`biosemi`), display_name, current_version. No blob/CEK storage yet — planned changes (blob + wrapped CEK per row, `IsDefault`, `RetiredAt`, drop `current_version`) are in `docs/config-management.md`. |
+| `ClientInstalls` | one row per registered AxoSync installation (not a unit: a *device* here is an Intelimensa unit, `BciDevices`) — its signing and agreement public keys, key thumbprint (unique per account), platform, name, app version, slot, registered/last-seen/revoked. Created only at a password login that carries the keys. |
+| `Configs` | key (unique, matches AxoSync's config stems e.g. `ms2`/`ms5`/`biosemi`), display_name, `IsDefault`, `RetiredAt`, and once uploaded the blob's storage key/SHA-256/size and the CEK wrapped under the KEK. |
+| `ConfigKeyIssuances` | the audit trail of delivered config keys: account, install, pairing, config, blob SHA-256, build, lease end. |
 
 A fifth table, `RefreshTokens` (user_id, token_hash — SHA-256 of the raw token, never the raw value
 itself, created_at, expires_at, revoked_at, replaced_by_token_id for rotation chains), backs the
-JWT refresh flow below. Not yet tied to a `Device` row — that binding is future work once device
-registration exists.
+JWT refresh flow below. A token from a login that registered an install is bound to it (`ClientInstallId`).
 
 Password hashing is `Intelimensa.Accounts/Security/Argon2idPasswordHasher.cs`, an
 `IPasswordHasher<ApplicationUser>` registered in `Program.cs` in place of Identity's default
@@ -85,44 +84,32 @@ file's header comment). Identity is wired via `AddIdentityCore` (not `AddIdentit
 12`, no digit/upper/symbol requirement) per current NIST 800-63B guidance, since Argon2id already
 defends against offline cracking.
 
-## Config delivery model (agreed, not built)
+## Config delivery
 
-The full design, its reasoning and the remaining open questions are in
-[`docs/config-management.md`](docs/config-management.md). Read it before building any part of
-config delivery. In summary:
+The design, its reasoning and what is deferred (2FA, watermarking, the emergency lease, the browser) are in
+[`docs/config-management.md`](docs/config-management.md); its last section, "As built (server)", lists what
+the build settled. Read it before changing any of this. The server side, in short:
 
-- **Encryption format stays AxoSync's.** It's `salt(32) ‖ nonce(12) ‖ tag(16) ‖ ciphertext`, with
-  PBKDF2-SHA256 at 600k iterations and AES-256-GCM (`axosync/ConfigGen/Program.cs` encrypts,
-  `axosync/AxoSync/Utilities/ConfigLoader.cs` `DecryptResource` decrypts). Don't reinvent it.
-- **Each config gets a fresh random content key (CEK).** A new ConfigGen "publish" mode generates
-  the CEK and feeds it through the existing format in place of the password. It outputs
-  `<stem>.cfg` (the blob) and `<stem>.key` (the CEK).
-- **Staff upload both files** to a `Config` row at `/Staff/Configs`. The server:
-  - test-decrypts the blob and checks it parses as INI;
-  - stores the blob via an `IConfigStorage` (the same shape as `IReleaseStorage`);
-  - stores the CEK wrapped under a KEK. The KEK is a single secret in configuration
-    (`Configs:KeyEncryptionKey` plus a key ID), loaded like `Jwt:SigningKey`.
-- **Configs aren't versioned.** A different config is a new `Config` row. Re-uploading a file to
-  an existing row is only for key rotation or fixes. `Config.CurrentVersion` is to be dropped.
-- **One config is the default** (`IsDefault`). The staff assignment form pre-selects it, and staff
-  still confirm it. Experimental configs are issued by hand. Assignment stays per `AccountDevice`
-  and staff-only.
-- **Delivery works like this:**
-  - `GET /api/devices/{serial}/config` checks that the account is usable, the pairing is active,
-    and the assigned config has a file and isn't retired. It then returns the CEK and a signed
-    offline lease, with `no-store`, and logs the issuance.
-  - `GET /api/configs/{key}/blob` returns the ciphertext. It's cacheable, with the SHA-256 as the
-    ETag.
-  - The client decrypts in memory, and the plaintext never touches disk.
-- **Offline use works through signed leases.**
-  - A lease is signed by the server and bound to the account, the device serial and the blob's
-    SHA-256.
-  - It lasts 7 days by default (`Configs:OfflineLeaseDays`). Staff can override that per account
-    (`Account.OfflineLeaseDaysOverride`), up to 30 days (`Configs:MaxOfflineLeaseDays`). A lease
-    never runs past the account's `ExpiresAt`.
-  - The client keeps the CEK and lease DPAPI-wrapped (Keychain/Keystore on future mobile builds).
-    It checks the signature, the expiry, the clock and the connected serial before using them
-    offline.
+- **Client installs** (`Security/ClientInstallRegistry.cs`): AxoSync registers its two P-256 public keys at
+  password login (`install` in the login body). At most `Configs:MaxInstallsPerAccount` (6) active installs per
+  account (staff override per account), idle ones revoked after `Configs:InstallIdleDays`, the participant emailed
+  for each new one and able to remove it on My Account. Tokens from that login are bound to the install.
+- **Install proofs** (`Security/InstallProof.cs`, `InstallNonces.cs`, `InstallProofMiddleware.cs`): every request on a
+  bound token is signed by the install over method, path, body hash and a server-issued nonce. Logins without an
+  install (Quarry, publish scripts) still work and get unbound tokens, which can't fetch configs.
+- **Configs** (`ConfigDelivery/`): staff upload ConfigGen's v2 blob plus its random CEK at `/Staff/Configs`
+  (`ConfigUploader` test-decrypts the pair); the blob goes to `IConfigStorage` (`Configs:StoragePath`), the CEK is
+  wrapped under the KEK (`KeyEncryption`). The v2 format (`ConfigBlob`) has no PBKDF2.
+- **Delivery** (`Api/ConfigDelivery/`, `ConfigIssuer`): `GET /api/devices/{serial}/config?version=&platform=` wraps the
+  CEK to the install's agreement key and the calling build's release secret (`CekWrap`: ECDH + HKDF + AES-GCM) and
+  returns it with a signed offline lease (`OfflineLease`, 7 days by default, staff override, never past `ExpiresAt`);
+  `GET /api/configs/{key}/blob` serves the blob. Only published builds uploaded with `X-Release-Secret`, and not
+  blocked on `/Staff/Releases`, get keys.
+- **Switch:** without `Configs:KeyEncryptionKey` and `Configs:LeaseSigningKey` the server runs and delivery is off
+  (503). Both are secrets, like `Jwt:SigningKey` (user-secrets locally, environment on the VPS); how to make them is in
+  the doc. `Configs:DevelopmentReleaseSecret` (Debug builds, `version=development`) is refused outside Development.
+- **Testing:** `scripts/test-server.sh start` turns delivery on with throwaway keys; `dotnet run scripts/config-delivery-smoke.cs`
+  then plays AxoSync through the whole flow. The formats are pinned by `testdata/config-delivery-vectors.json`.
 
 **Explicitly out of scope**: preventing an authorized participant from extracting the plaintext
 config from their own running app (for example via a memory dump). No key-delivery scheme solves
@@ -147,6 +134,8 @@ path, per the "one app, two faces, sharing the same ... business logic" architec
 - `POST /api/auth/refresh` — rotates the refresh token (issues a replacement, revokes the one
   presented) and returns a fresh access token. A reused/revoked/expired refresh token is rejected.
 - `POST /api/auth/logout` — revokes a refresh token.
+- With `install` in the login body (AxoSync), the tokens are bound to that client install: refresh then needs
+  the install's proof, and so does every API call on the access token (`client_install` claim). See "Config delivery".
 - The refresh token is what the desktop client persists (DPAPI-wrapped locally per the config
   delivery model above) — its presence/validity is the mechanism behind the offline grace period.
 
@@ -410,7 +399,7 @@ read-only. Don't hand-run `dotnet ef migrations script` against the production d
 For manual or scripted testing against a running app, use `scripts/test-server.sh start|stop|status|logs`
 instead of starting servers by hand. It builds, migrates a throwaway database, seeds `test@example.com` /
 `correct-horse-battery` (Staff + Manufacturer) and starts on a free port (from 5399), with its database, release
-storage and firmware storage all inside one temp directory (`$TMPDIR/intelimensa-accounts-test`) that `stop`
+storage, firmware storage and config storage all inside one temp directory (`$TMPDIR/intelimensa-accounts-test`) that `stop`
 deletes (only if it carries the script's marker file). It never touches `accounts.db`, `releases/` or
 `firmware-files/`. Never point a test server at the dev storage folders: uploads there are real dev data.
 
@@ -446,6 +435,7 @@ others keep a byte-identical **copy**, and each side tests itself against it. Th
 | Release signing | `testdata/release-signing-vectors.json` | owner | `scripts/gen-signing-vectors.py`; copy in `axosync` (branch `remote-account` only) |
 | Serial numbers | `testdata/serial-number-vectors.json` | owner | `scripts/gen-serial-vectors.py`; copy in `firmware/quarry/tests/testdata/` |
 | JSON API | `testdata/api-vectors.json` | owner | `scripts/gen-api-vectors.py`; copies in `firmware/quarry/tests/testdata/` and `axosync` (`remote-account` only) |
+| Config delivery | `testdata/config-delivery-vectors.json` | owner | `scripts/gen-config-delivery-vectors.py` (plain-Python crypto, deterministic); no copies yet, AxoSync's comes with its client side |
 | Firmware images | `testdata/firmware-image-vectors.json` | copy | owner: `firmware/quarry/tests/` |
 | Unit identity | `testdata/identity-vectors.json` | copy | owner: `firmware/testdata/` |
 

@@ -3,8 +3,8 @@ namespace Intelimensa.Accounts.Models;
 /// <summary>
 /// A physical BCI unit Intelimensa has produced -- the production/inventory record, tracked from
 /// manufacture onward, independent of whether it has been distributed to a participant yet. Not
-/// to be confused with <see cref="Device"/>, which is the AxoSync client's computer/install, not
-/// the headset itself.
+/// to be confused with <see cref="ClientInstall"/>, which is an installation of AxoSync on a
+/// participant's computer, not the headset itself.
 /// </summary>
 public class BciDevice
 {

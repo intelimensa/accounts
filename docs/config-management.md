@@ -1,9 +1,10 @@
 # Config file management — design
 
-Status: **agreed design, not built**. The only parts that exist today are the `Configs` metadata
-table and per-device assignment (`AccountDevice.AssignedConfigId`, set by staff at
-`/Staff/DeviceAssignments`). This doc replaces the "Config delivery model (planned)" section of
-`CLAUDE.md`.
+Status: **agreed design; the server side is built** on the `remote-config` branch (2026-10-25), without 2FA.
+AxoSync's client side and ConfigGen's publish mode are not built yet. Watermarking, the emergency offline
+lease and the browser are deferred (see "Later"), and so is 2FA, to get delivery working first. Where the
+build settled something this doc left open, or departed from it, see "As built (server)" at the end. This doc replaces the
+"Config delivery model (planned)" section of `CLAUDE.md`.
 
 ## Where we are today
 
@@ -15,7 +16,9 @@ table and per-device assignment (`AccountDevice.AssignedConfigId`, set by staff 
   passphrase into `ConfigSelectionDialog`, and `ConfigLoader.DecryptResource` decrypts the file in
   memory.
 - As a result, anyone with the installer and a passphrase can decrypt that config forever.
-  Account status, expiry and staff assignment in this service have no effect on that.
+  Account status, expiry and staff assignment in this service have no effect on that. Rotating
+  keys later doesn't help either: installers already handed out stay decryptable with the
+  passphrases they shipped with.
 
 ## How configs are used
 
@@ -25,387 +28,599 @@ table and per-device assignment (`AccountDevice.AssignedConfigId`, set by staff 
   `Config` row with its own key). Replacing a config's file in place only happens for key
   rotation or a fix (see "Rotation, revocation and compromise").
 - Configs aren't customized per participant today. That may change, and it would arrive together
-  with watermarking (see "Threat model", item 2), which is a separate, pending discussion.
+  with watermarking (see "Threat model", item 2).
 
 ## Goals
 
 1. Only a signed-in, usable account (active and not expired) can decrypt a config, and only when
    it has a registered device that staff have assigned that config to.
-2. The app works offline for a bounded period. Revocation and expiry take effect at the next
+2. **A valid token on its own is not enough.** Whoever replays AxoSync's requests with a stolen or
+   copied token, or with their own token from a script, gets nothing they can decrypt. Turning a
+   delivery into a config takes the private key of a registered install *and* the secret
+   compiled into a supported AxoSync release.
+3. The app works offline for a bounded period. Revocation and expiry take effect at the next
    online launch, or when the offline lease runs out. Nothing needs cleaning up by hand on
    participants' machines.
-3. The plaintext never sits on the server's disk, in its backups, or on the participant's disk.
-4. Reuse AxoSync's existing encrypted format and `DecryptResource` unchanged.
+4. The plaintext never sits on the server's disk, in its backups, or on the participant's disk.
 5. Rotating a config's key is cheap: re-run ConfigGen and replace the file.
+6. No password prompt for a signed-in participant.
 
 Not a goal: stopping an authorized participant from extracting the plaintext from their own
-running process. That is out of scope, as stated in `CLAUDE.md`.
+running process. No delivery scheme can, as long as the pipeline runs on their PC (see "Threat
+model"). The aim is that extraction takes reverse-engineering a protected release, not a `curl`.
 
-## Proposed flow
+## Overview: four layers
 
-### 1. Producing an encrypted config (staff, offline)
+| Layer | What it stops |
+|---|---|
+| 1. Requests are signed by a key that belongs to the install | A token copied off a disk or out of traffic is useless without the install's private key |
+| 2. Installs are limited per account and visible | A participant who scripts their own client has to register a new install, which they're told about and staff can see |
+| 3. The delivered key is wrapped to the install's key **and** to a per-release secret | A delivery is only usable by that install running a supported AxoSync build |
+| 4. Encrypted configs, offline leases, decryption in memory only | Plaintext never on disk or on the server; offline use bounded |
+
+Layer 3 is the one that answers "only AxoSync knows what to do with it". Layers 1 and 2 make sure
+a stolen token can't stand in for a registered install.
+
+## 1. Client installs (the `ClientInstalls` table)
+
+One row per **client install**: one registered installation of AxoSync (one instance slot on one
+machine or app install). The table exists today as the unused `Device` model and is renamed
+`ClientInstall` before anything writes to it. In this service a
+*device* is an Intelimensa unit with a provisioned serial number and registration code
+(`BciDevice`); a *client install* is a copy of AxoSync.
+
+### Keys
+
+On first sign-in, AxoSync generates **two P-256 keypairs** for the install: a signing key (ECDSA,
+proves requests come from this install) and a key-agreement key (ECDH, receives wrapped content
+keys). Two keys, not one, because platform keystores fix a key's purpose at creation and because
+reusing one key for signing and ECDH is poor practice.
+
+Where the private keys live, best available per platform:
+
+| Platform | Store | Can the participant copy the key? |
+|---|---|---|
+| Windows with TPM 2.0 | CNG, Microsoft Platform Crypto Provider (TPM-backed, non-exportable) | No, it can't leave the machine; it can only be *used* there |
+| Windows without TPM | DPAPI (`FileSecretStore`) | Yes, as that user |
+| macOS | `0600` file (`FileSecretStore`) today; Secure Enclave once builds carry a stable Developer ID signature | Yes today; no with the Secure Enclave |
+| iOS / iPadOS | Secure Enclave via Keychain | No |
+| Android | Android Keystore (hardware-backed where available) | No |
+| Browser | WebCrypto, non-extractable key in IndexedDB (sign-in only; the browser gets no configs, see section 2) | Not directly, but the page runs on the participant's machine |
+
+The choice of P-256 is deliberate: it is the curve every hardware store above supports, and the
+one the release signing already uses.
+
+### How a row is created
+
+At login, AxoSync sends its install's public keys with the credentials:
+
+```json
+POST /api/auth/login
+{ "email": "…", "password": "…",
+  "install": { "signingKey": "<SPKI base64>", "agreementKey": "<SPKI base64>",
+               "platform": "MacOS", "name": "MacBook Air", "appVersion": "0.1.0", "slot": 1 } }
+```
+
+with an install proof (below) signed by `signingKey`, which shows the client holds the private
+key. The server then:
+
+1. checks the password and account as today;
+2. if the account has two-factor authentication on, asks for the code first (see "Two-factor
+   authentication"), so a new install can only be registered with both factors;
+3. looks for a non-revoked `ClientInstalls` row of this account with the same signing-key thumbprint. If
+   there is one (the participant signed out and back in), it reuses it, and no slot is used;
+4. otherwise counts the account's active installs (not revoked, seen within the idle window). At
+   the limit it refuses with `409 {"error":"install_limit"}`, and AxoSync tells the participant to
+   remove an old install on the website. Below it, it creates the row;
+5. issues the tokens bound to that row: the refresh-token row gets `ClientInstallId`, and the access JWT
+   carries the install's ID and key thumbprint (a `cnf` claim, as in RFC 9449 / DPoP);
+6. records the registration and emails the participant ("AxoSync was signed in on a new
+   computer: MacBook Air, macOS").
+
+Nothing else creates rows. Registration happens only together with a password login, so a
+stolen refresh token can't add an install.
+
+### Install proofs (every authenticated request)
+
+Every request that uses a token (`refresh`, the config endpoints, update checks) carries a header
+`X-Install-Proof`: the install's ECDSA signature, DER then base64, over this UTF-8 text, each
+line ending in `\n`, in the same style as the release statement:
+
+```
+intelimensa-install-proof-v1
+<METHOD>
+<path and query>
+<lowercase hex SHA-256 of the body, or of the empty string>
+<nonce>
+```
+
+The **nonce comes from the server**, not the client's clock, so a wrong clock can't break sign-in.
+Every `/api` response carries a fresh `X-Install-Nonce`, a stateless HMAC of a timestamp under a server
+key, valid for 5 minutes, and `GET /api/auth/nonce` hands one out on its own. The client sends the nonce
+it signed in its own `X-Install-Nonce` request header. A request with a missing or stale nonce gets `401`
+(`install_proof_required` / `install_nonce_stale`) with a new nonce, and the client retries once. (The same exchange as DPoP's `use_dpop_nonce`.)
+
+The server checks that the proof verifies against the signing key of the install the token is
+bound to, and that the install isn't revoked. That check runs on every call, like the existing
+per-call account check, so removing an install takes effect at once.
+
+### Limits and visibility
+
+- **Default limit: 6 active installs per account** (`Configs:MaxInstallsPerAccount`). That's one
+  for each target a participant might reasonably use (desktop PC, MacBook, Android phone, iOS
+  tablet, browser) plus one spare for moving to a new machine. Staff can override it for one
+  account (`Account.MaxInstallsOverride`, nullable).
+- **Idle expiry:** an install not seen for 60 days stops counting and is revoked
+  (`Configs:InstallIdleDays`). A reinstall or a lost key therefore resolves itself, and nobody has
+  to clean up dead installs by hand.
+- **The participant's account page lists their installs** (name, platform, last seen) with a
+  "Remove" button, which revokes the row and its refresh tokens.
+- **Staff alert** when one account registers 3 or more installs within 24 hours. That catches a
+  scripted client sooner than a cap does.
+- Each instance slot is its own install, so two people on one PC use two installs, each on their
+  own account.
+
+## 2. Per-release secrets
+
+Each AxoSync **build** (one version on one platform) carries a random 32-byte secret, compiled
+in. The server holds a copy, and mixes it into every key it wraps for that build (section 4), so
+a delivery is useless to anything but that build's code.
+
+### How a secret is made and reaches the server
+
+1. The build script (`osx/release.sh`, `windows/release.ps1`) generates the secret, compiles it in
+   and writes it next to the installer (`<installer>.release-secret`).
+2. The publish script (`all/publish.sh`, `windows/publish.ps1`) uploads it with the artifact:
+   `PUT /api/publishing/releases/{version}/artifacts/{platform}`, new header
+   `X-Release-Secret`. It is Publisher-only and drafts-only, the same as the installer upload,
+   then the script deletes the file.
+3. The server stores it **wrapped under the KEK** on the `ReleaseArtifact` row. It never leaves
+   the server again.
+
+This is separate from release signing, which is unchanged: the YubiKey signs the installer's
+statement (`release-publishing.md`), and the per-release secret is neither a signature nor part of
+the signed statement.
+
+### Where the secret lives in the build
+
+In a handful of methods that Reactor virtualizes (NecroBit and code virtualization, already on
+in both `.nrproj` files), together with the code that uses it: the key unwrap and the blob
+decryption (section 4), written in AxoSync itself instead of calling `AesGcm` and the platform
+HKDF. A library call is a public, unprotected function that anyone can hook (Harmony and the
+like) to read the key as it goes in. The same code inside a virtualized method can't be hooked
+that way. A config is a few KB, so speed doesn't matter.
+
+- **Verify on the output, not the settings.** Reactor virtualizes the methods it is told to. After
+  each release build, open the obfuscated assembly in ILSpy or dnSpy and confirm those methods'
+  bodies are VM stubs, on both platforms.
+- **What stays hookable:** the decrypted text still goes to TINS's `INI.TryParse`, and the ECDH
+  step goes to the platform keystore when the key is hardware-backed (that only yields the shared
+  secret, which is useless without the release secret). TINS.Core isn't protected and won't be,
+  because it runs almost every hot path of the app. A later option is to move the config parser
+  into AxoSync and protect it there.
+- **The browser head gets no configs.** It runs as WebAssembly, where Reactor doesn't apply and
+  every line of our code (pipeline included) is readable in the browser. The browser is tabled
+  until the pipeline no longer runs on the participant's machine: either `msv4`-class devices run
+  it on the unit, or there is enough compute to run it in the cloud. In both cases the config
+  never reaches the browser at all.
+
+### Retiring a release's secret
+
+A release's secret can be **blocked** (`ReleaseArtifact.ConfigDeliveryBlockedAt`), because the
+release is too old or its secret is suspected leaked. The server then issues no keys to that
+build, and AxoSync tells the participant to update. Combined with `minimumVersion` this is the
+forced-upgrade path. **The update check must never depend on a config being loaded**, so that a
+blocked or broken release can always update itself. A test should enforce this.
+
+Debug builds carry no release secret. They keep the local `ConfigPasswords` path, and a
+development server may accept one fixed development secret (`Configs:DevelopmentReleaseSecret`),
+which production never sets.
+
+## 3. Producing and uploading a config (staff, offline)
 
 ConfigGen gets a "publish" mode. For each catalog entry, it:
 
-- generates a **fresh random content key (CEK)**: 32 random bytes, written out as a base64 string;
-- encrypts the INI file with the **existing format and code path**, passing the CEK string as the
-  "password";
-- writes out two files: `<stem>.cfg` (the ciphertext blob) and `<stem>.key` (the CEK).
+- generates a **fresh random content key (CEK)**, 32 bytes;
+- encrypts the INI file in a **new blob format, v2**: `"IMCF" ‖ version(1)=2 ‖ nonce(12) ‖
+  tag(16) ‖ ciphertext`, AES-256-GCM with the CEK used directly. The v1 format's PBKDF2 at 600k
+  iterations exists to stretch a human passphrase; a random 256-bit key needs none, and since the
+  client decryption is being rewritten anyway (section 2), the cost goes;
+- writes `<stem>.cfg` (the blob) and `<stem>.key` (the CEK).
 
-Feeding a random 256-bit string through PBKDF2 at 600k iterations adds nothing to security, since
-the key already has full entropy. It costs about 100–300 ms per decrypt. In return, the format
-stays byte-identical and the client's crypto code doesn't change, which is a good trade. If we
-later want to drop the KDF cost, we can add a format version byte, but we don't need to now.
+Staff upload both at `/Staff/Configs` to a `Config` row (uploading to a row that has a file
+replaces it). The server:
 
-Once this ships, `ConfigPasswords.cs` and the configs embedded in the installer go away. AxoSync
-ships with **no** configs.
+- validates the blob header and length;
+- **test-decrypts the blob with the supplied key** and checks the result parses as INI, so a
+  mismatched pair is rejected at upload rather than on a participant's machine. The plaintext is
+  only held in memory and then discarded;
+- computes the blob's SHA-256;
+- stores the blob through an `IConfigStorage` outside the app directory (same shape as
+  `IReleaseStorage`);
+- stores the CEK **wrapped under the server KEK**, so a leaked DB or backup alone yields no keys.
 
-### 2. Uploading (staff, `/Staff/Configs`)
+Staff delete the `.key` file afterwards; the server is the only long-lived holder of CEKs. A
+config with no uploaded file, or a retired one (`RetiredAt`), isn't delivered or newly assigned.
 
-- Staff upload `<stem>.cfg` together with `<stem>.key` to a `Config` row. Uploading to a row that
-  already has a file replaces it (see "Rotation, revocation and compromise").
-- The server:
-  - validates the blob layout (at least 60 bytes);
-  - **test-decrypts the blob with the supplied key** and checks that the result parses as INI. A
-    mismatched pair is then rejected at upload time rather than on a participant's machine. The
-    plaintext is only held in memory and then discarded;
-  - computes the blob's SHA-256;
-  - stores the blob through an `IConfigStorage` outside the app directory. `IConfigStorage` has
-    the same shape as `IReleaseStorage`;
-  - stores the CEK in the DB **wrapped under a server key-encryption key (KEK)** (see "Server key
-    management"). A leaked DB or backup alone then yields no usable keys.
-- Staff delete the `.key` file from their machine after uploading. The server is the only
-  long-lived holder of CEKs.
-- A config with no uploaded file can't be delivered. A retired config (`RetiredAt` set) isn't
-  delivered, and can't be newly assigned.
+Once this ships, `ConfigPasswords.cs` and the configs embedded in the installer go away from
+Release builds.
 
-### 3. Assignment
+## 4. Assignment, delivery and decryption
 
-A participant registers a device with its serial number and registration code. Staff then assign
-a config to that `AccountDevice`, as they do today.
+### Assignment
 
-- The staff assignment form **pre-selects the default config** (the one `Config` row marked
-  `IsDefault`). Staff confirm it with one click, or pick an experimental config instead.
-- Nothing is assigned automatically. Until staff confirm, the participant's app gets no config.
-  This keeps "staff match the participant, unit and calibration" true.
-- At most one config is the default. Marking another config as the default unmarks the previous
-  one.
+A participant registers a unit with its serial number and registration code
+(`POST /api/devices/register`, as today). Staff then assign a config to that `AccountDevice`:
 
-### 4. Delivery and decryption (AxoSync, on every online sign-in)
+- the form **pre-selects the default config** (the one `Config` row marked `IsDefault`), and staff
+  confirm it with one click or pick an experimental config;
+- nothing is assigned automatically; until staff confirm, the participant's app gets no config;
+- at most one config is the default.
 
-1. AxoSync signs in (`/api/auth/login` or `refresh`). It knows which BCI device is connected from
-   the device's serial.
-2. `GET /api/devices/{serial}/config` (JWT) checks all of these:
-   - the account is usable;
+### Delivery (every online launch)
+
+1. AxoSync restores its session (`refresh`, with an install proof) and reads the connected unit's
+   serial (`dcGetIdentity`).
+2. `GET /api/devices/{serial}/config` (token plus install proof). The server checks that:
+   - the account is usable and the install isn't revoked;
    - an active `AccountDevice` exists for this serial;
-   - that pairing has an assigned config that has an uploaded file and isn't retired.
+   - it has an assigned config with an uploaded file, not retired;
+   - the calling build (version and platform from the request) has a release secret that isn't
+     blocked.
 
-   If all checks pass, the response is the config's metadata, the key and a signed offline lease
-   (section 5):
+   It then wraps the CEK for this install and this build:
 
-   ```json
-   { "configKey": "ms5", "sha256": "…", "cek": "<base64>", "lease": { … }, "leaseSignature": "…" }
+   ```
+   shared  = ECDH(fresh server ephemeral key, install agreementKey)
+   kek     = HKDF-SHA256(ikm = shared, salt = release secret,
+                         info = "intelimensa-cek-wrap-v1" ‖ install id ‖ config key ‖ blob sha256)
+   wrapped = AES-256-GCM(kek, CEK)
    ```
 
-   The response carries `Cache-Control: no-store`. Every issuance is logged with the account,
-   device, config, blob SHA-256 and time.
-3. `GET /api/configs/{key}/blob` returns the ciphertext.
-   - It's gated on the same entitlement.
-   - It's a separate request that can be cached (ETag = SHA-256), because the blob is useless
-     without the key.
-   - AxoSync re-downloads the blob only when the SHA-256 differs from its cached copy.
-4. AxoSync calls `DecryptResource(blob, cek)`, parses the INI and runs the pipeline from memory.
-   **Nothing decrypted is written to disk.** The CEK is persisted only inside the DPAPI-wrapped
-   offline lease (section 5).
+   and responds (`Cache-Control: no-store`):
 
-**Why the client decrypts rather than the server sending plaintext:** trust is the same either
-way, because the server holds the key in both cases. But with client-side decryption:
-- the existing client code path stays unchanged;
-- the blob can be cached and transferred separately from the key;
-- the only secret in each response is 32 bytes behind `no-store`, and the blob never needs
-  special handling.
+   ```json
+   { "configKey": "ms5", "sha256": "…",
+     "wrappedCek": { "ephemeralKey": "<SPKI base64>", "nonce": "…", "ciphertext": "…", "tag": "…" },
+     "lease": { … }, "leaseSignature": "…" }
+   ```
 
-### 5. Local storage and offline use
+   Every issuance is logged with the account, install, unit, config, blob SHA-256, build and time.
+3. `GET /api/configs/{key}/blob` returns the ciphertext. Same entitlement, but cacheable
+   (ETag = SHA-256), because the blob is useless without the key. AxoSync downloads it only when
+   the SHA-256 differs from its cached copy.
+4. AxoSync does ECDH with its agreement key, then (inside the protected methods) HKDF, unwraps
+   the CEK, decrypts the blob and hands the INI text to the parser. **Nothing decrypted is
+   written to disk.**
 
-**Requirement: the app must work offline.** We can't assume participants have a reliable
-connection. Offline use is therefore built as a bounded **offline lease**, renewed whenever the app
-is online.
+A token and a nonce replayed from a script without the install's private key fails the proof. A
+script that has its own registered install gets a wrapped key it can't open without the release
+secret.
 
-**What the server issues.** Alongside the CEK, the server issues a signed lease:
+### Offline use: leases
+
+Offline use is required (participants can't be assumed to have a reliable connection). It is
+built as a bounded **offline lease**, renewed whenever the app is online.
+
+The server signs a lease (ECDSA P-256, DER signature, over a text statement in the style of the
+release statement; `ConfigDelivery/OfflineLease.cs`), with a server lease-signing key whose public key
+AxoSync embeds:
 
 ```json
-{ "accountId": 42, "serial": "MS05A0K3F9Q7", "configKey": "ms5", "sha256": "…",
-  "issuedAt": "…", "notAfter": "…" }
+{ "accountId": 42, "installId": "…", "serial": "MS05A0K3F9Q7", "configKey": "ms5",
+  "sha256": "…", "issuedAt": "…", "notAfter": "…" }
 ```
 
-- The lease is signed with Ed25519 or ECDSA using a server lease-signing key. AxoSync embeds the
-  matching public key.
 - `notAfter` = min(now + lease length, account `ExpiresAt`).
-- **The lease length defaults to 7 days** (`Configs:OfflineLeaseDays`).
-- Staff can set a longer lease for one account (`Account.OfflineLeaseDaysOverride`, nullable),
-  for example when a participant contacts support with a plausible reason such as fieldwork or
-  travel.
-- The override is capped at **30 days** (`Configs:MaxOfflineLeaseDays`), so a typo can't grant a
-  year.
-- The override is set on the account rather than per device, because connectivity depends on the
+- **Default 7 days** (`Configs:OfflineLeaseDays`); staff can set a longer lease for one account
+  (`Account.OfflineLeaseDaysOverride`), capped at **30 days** (`Configs:MaxOfflineLeaseDays`).
+  It is set on the account rather than per install, since connectivity depends on the
   participant's circumstances.
 
-**What AxoSync persists.**
+AxoSync caches the blob (freely), and the **wrapped** CEK plus the lease plus a "latest time seen"
+high-water mark. The wrapped CEK is still useless without the install's agreement key and the
+release secret, so the cache doesn't need a separate protection layer. It goes in `ISecretStore`
+anyway.
 
-- The encrypted blob, which can be cached freely.
-- The CEK and the lease, wrapped together with DPAPI (`CurrentUser`), so they can't be copied to
-  another user or machine.
-- A "latest time seen" high-water mark, kept inside the same DPAPI-wrapped record.
-
-**At launch.**
-
-- **Online:** refresh the token and fetch a fresh lease and CEK. Download the blob too if its
-  SHA-256 changed. Then overwrite the cache.
-- **Offline:** use the cached CEK only if all of these hold:
-  - the lease signature is valid;
-  - `now < notAfter`;
-  - the clock hasn't moved backwards past the high-water mark (with some tolerance);
-  - the connected BCI device's serial matches the lease's `serial`.
+- **Online launch:** fetch a fresh wrapped key and lease (and the blob if its SHA-256 changed),
+  then overwrite the cache.
+- **Offline launch:** use the cache only if the lease signature is valid, `now < notAfter`, the
+  clock hasn't moved backwards past the high-water mark (with some tolerance), the lease's
+  `installId` is this install and its `serial` is the connected unit.
 - **Otherwise:** AxoSync explains that it needs to go online.
+- **After an update**, the cached key is wrapped under the *previous* build's secret, which the new
+  build doesn't have. So before installing, AxoSync fetches the new build's key:
+  - Once an update is staged (`UpdateService`, online by definition), AxoSync asks
+    `GET /api/devices/{serial}/config?version=<new version>&platform=<platform>` and caches that
+    wrapped key and lease next to the current ones, keyed by build. The new build picks its own
+    on its first launch, so an install-on-exit followed by an offline launch still works.
+  - The server answers only for builds that are published and not blocked. Asking on behalf of
+    another build gives nothing away: unwrapping still needs that build's secret.
+  - If the fetch fails, the update installs anyway, and the new build needs one online launch.
+    It never blocks an update.
 
-**Revocation and expiry.** Revocation takes effect at the next online launch, or at the latest
-when the lease expires. The lease length trades offline tolerance against how long a revoked
-participant keeps access, so extensions should be granted with that in mind.
+Revocation and expiry take effect at the next online launch, or when the lease runs out.
 
-**Plaintext stays off disk.** The plaintext is still never written to disk. It's re-derived from
-the blob and CEK on every launch.
+## Two-factor authentication
 
-**What this does and doesn't protect.**
-- DPAPI stops casual copying to another machine or another Windows user.
-- It does **not** protect against the participant themselves: any process running as that user
-  can unprotect the record.
-- The expiry and clock checks also run on a machine the participant controls.
+Install registration happens only at password login, so a second factor there protects both
+the account and the "only registered installs get configs" rule.
 
-Offline leases therefore keep honest users honest and limit accidental spread. They are not a
-defense against a determined participant (see "Threat model" below).
+**Who has it**
+- **Optional for every account.** A participant turns it on from their account page.
+- **Required for privileged roles:** Staff, Admin, Manufacturer and Publisher. An account holding
+  one of these roles without 2FA is sent to enrollment at its next web login, and its API tokens
+  carry no privileged role claims until it has enrolled.
 
-Mobile versions of the app would store the same record in the iOS Keychain or Android Keystore.
+**The method:** time-based codes from an authenticator app (TOTP, RFC 6238), plus ten single-use
+recovery codes. Both are built into ASP.NET Core Identity: `AddDefaultTokenProviders()`, which
+`Program.cs` already calls, registers the authenticator provider, and `UserManager` generates and
+checks recovery codes (stored hashed). No SMS (weak, and costs money per message), and no emailed
+codes (email is the account-reset channel, so it can't also be the second factor).
+
+**Website**
+- Enrollment page: shows a QR code and the key in text (an `otpauth://` URI), asks for one code to
+  confirm, then shows the recovery codes once.
+- Login: the existing `Pages/Account/Login` gets a second step for the code or a recovery code.
+- Account page: disable (needs a current code), regenerate recovery codes.
+- Enabling 2FA offers to sign out every other install, in case the password was already known to
+  someone.
+
+**API (AxoSync, Quarry, the publish scripts)**
+
+Login becomes two steps when the account has 2FA:
+
+```json
+POST /api/auth/login          { "email": "…", "password": "…", "install": { … } }
+→ 200 { "twoFactorRequired": true, "challenge": "<opaque>", "expiresAt": "…" }
+
+POST /api/auth/login/2fa      { "challenge": "<opaque>", "code": "123456" }
+                           or { "challenge": "<opaque>", "recoveryCode": "…" }
+→ 200 TokenResponse (as today)
+```
+
+- The challenge is short-lived (5 minutes) and single-use. It is bound to the user, their security
+  stamp (so a password change voids it) and the install key that signed the first step; the
+  second step must carry an install proof from the same key.
+- Failed codes count toward Identity's lockout, like failed passwords.
+- **Refresh never asks for a code.** A refresh token belongs to an install that already passed
+  2FA, and is bound to that install's key, so the install itself acts as "remember this device".
+  That is what keeps 2FA from becoming a prompt at every launch.
+
+**Clients**
+- AxoSync: `LoginDialog` gets a code step.
+- Quarry: its login gets a code step (Manufacturer accounts must have 2FA).
+- `publish.sh` / `publish.ps1`: prompt for the code (Publisher accounts must have 2FA). Both are
+  already interactive (YubiKey PIN and touch), so this adds one prompt per release. The Mac drives
+  remote Windows releases (`all/publish.sh`), so the code is typed there.
+- `api-vectors.json` gets the two-step login examples, with its copies in Quarry and AxoSync.
+
+**Lost authenticator and lost recovery codes**
+- Staff can reset a participant's 2FA from the account row, after confirming who is asking (for
+  example from the participant agreement's contact details). The reset is logged and the
+  participant is emailed.
+- Resetting a Staff or Admin account's 2FA needs a different Staff or Admin account.
+
+**Later:** passkeys (WebAuthn) for the website. Check what ASP.NET Core Identity in .NET 10 offers
+before building our own. They don't fit the desktop app's login as easily, which is why TOTP comes
+first.
+
+## Failure modes and recovery
+
+| Failure | Effect | Recovery |
+|---|---|---|
+| Install key lost (reinstall, wiped AppData, new PC, profile reset, Mac migration) | Signed out | Sign in again; a new install is registered. The old one idles out after 60 days, or the participant removes it. |
+| Install limit reached | "Too many installs" at sign-in | Participant removes an old install on the website; staff can raise the limit for one account. |
+| Offline longer than the lease | AxoSync asks to go online | By design; staff can lengthen the lease for one account. |
+| Unit doesn't report a serial | No config can be bound to it | Two such units are in use today; they're to be replaced before the config-less build ships (see "Rollout"). |
+| Participant's clock wrong | Proofs unaffected (server nonce); the lease clock check may complain | Tolerance on the lease check; an online launch corrects it. |
+| VPS down | Participants with a valid lease don't notice; new or expired ones can't load a config | Restore from backup (DB and blobs; keys come from the password-manager copies). An emergency offline lease is a possible later addition (see "Later"). |
+| DB or backup leaked on its own | No usable keys (CEKs wrapped under the KEK; release secrets too) | Rotate anyway: ConfigGen publish, re-upload. |
+| VPS taken over | KEK, CEKs, blobs and release secrets exposed: assume every current config leaked | New KEK and lease-signing key, new CEKs, new release, revoke all tokens. The leaked content stays leaked; only watermarking would trace it. |
+| Lease-signing key leaked | Leases can be forged, but a lease only gates a wrapped key the forger would still have to open | Ship a release with a new public key. |
+| A release's secret extracted | That build's protection is gone | Block its config delivery; participants on it update (`minimumVersion`). Windows copies not installed by Inno need a manual reinstall. |
+| A release with a crypto or protocol bug | Nobody on it can load a config | Publish a fix; the update path never depends on a config. The server keeps serving the old wire format until no supported build uses it. |
+| Malware running as the participant (no hardware key store) | Can use the install's key and token | Same exposure as today; removing the install on the website kills it. Hardware-backed keys (TPM, Secure Enclave, Keystore) stop the key from being copied away. |
+| Keys or tokens in logs | Leaked through support zips | Never log keys, tokens, proofs or wrapped keys; redact `Authorization`. A test should enforce it. |
+
+## Rollout
+
+**Branches:** the work happens on a branch named `remote-config` in each repo it touches
+(`accounts` and `axosync`; `firmware` too if Quarry's login changes for 2FA), and each is merged
+into its repo's `main` when that step is ready.
+
+1. Server: install registration and proofs, then the config endpoints, release-secret upload and
+   leases, behind a flag. AxoSync keeps the password path.
+2. AxoSync: install keys and proofs in `AccountsClient`; then config fetch, falling back to the
+   password dialog when the server can't deliver. Watch the issuance log for failures from real
+   participants.
+3. A release without embedded configs or `ConfigPasswords`, once **every active participant has
+   received a config through the server and every unit in use reports a serial** (the two units
+   without one are replaced first). Pull the old installers from distribution.
+
+The password fallback in step 2 is the transition's recovery path. It is also why the old
+installers stay as weak as they are today until step 3.
+
+## Contracts
+
+The new wire formats get a shared fixture like release signing, owned here:
+`testdata/config-delivery-vectors.json` (install proofs, the CEK wrap, the v2 blob and the offline lease),
+generated by `scripts/gen-config-delivery-vectors.py`. That script implements the crypto in plain Python,
+independently of .NET, checks itself against published test vectors, and writes the same file on every
+run. It has no copies yet: AxoSync's and ConfigGen's will be added to `vectors.manifest` when their side is
+built. The new endpoints' JSON goes into `api-vectors.json` at the same time, since that fixture's copies
+live in AxoSync and Quarry.
 
 ## Data model changes
 
 | Change | Notes |
 |---|---|
-| `Config`: add `BlobStorageKey`, `BlobSha256`, `BlobSize`, `WrappedCek`, `KekId`, `UploadedAt`, `UploadedByUserId` (all nullable until the first upload) | One encrypted file per config. `KekId` identifies which KEK wrapped the CEK, so the KEK can be rotated later. |
-| `Config`: add `IsDefault` (bool, at most one true) and `RetiredAt` (nullable) | `IsDefault` sets the default pre-selection. `RetiredAt` stops a config being delivered or newly assigned. |
-| `Config`: drop `CurrentVersion` | Configs aren't versioned. |
-| `Account.OfflineLeaseDaysOverride` (int, nullable) | Staff set it via the `/Staff` account row. Null means the default. Capped at `Configs:MaxOfflineLeaseDays`. |
-| New `ConfigKeyIssuances` table (or reuse `BciDeviceEvent`) | Audit record of who received which key, and when. |
+| `Device` renamed `ClientInstall` (table `ClientInstalls`, enum `ClientPlatform`): `SigningKey`, `AgreementKey`, `KeyThumbprint`, `Name`, `Slot`, `LastSeenAt`, `RevokedAt`; add `Browser` to the platforms | Replaces the single `PublicKey` placeholder. Nothing writes the table today, so the rename is free now. |
+| `RefreshToken.ClientInstallId` | Binds each refresh token to one install. |
+| 2FA: none | Identity's own columns hold it (`TwoFactorEnabled`, and the authenticator key and recovery codes in `AspNetUserTokens`). |
+| `Account.MaxInstallsOverride` (int, nullable) | Null means `Configs:MaxInstallsPerAccount` (6). |
+| `ReleaseArtifact`: `WrappedReleaseSecret`, `KekId`, `ConfigDeliveryBlockedAt` | One secret per build. |
+| `Config`: add `BlobStorageKey`, `BlobSha256`, `BlobSize`, `WrappedCek`, `KekId`, `UploadedAt`, `UploadedByUserId` (nullable until the first upload); `IsDefault`, `RetiredAt`; drop `CurrentVersion` | One encrypted file per config. |
+| `Account.OfflineLeaseDaysOverride` (int, nullable) | Capped at `Configs:MaxOfflineLeaseDays`. |
+| New `ConfigKeyIssuances` table (or reuse `BciDeviceEvent`) | Who received which key, on which install and build, when. |
 
 ## Rotation, revocation and compromise
 
-- **Suspected key leak, or a fix to a config:**
-  1. Run ConfigGen publish, which creates a fresh CEK.
-  2. Upload the result to the same `Config` row, replacing the old file.
-  3. The new blob SHA-256 makes clients fetch the new file and key at their next online sign-in.
-
-  The old key is no longer issued. A participant still offline keeps using the old file until
-  their lease runs out.
-- **A materially different config:** create a new `Config` row and reassign the participants who
-  should get it. Retire the old row once nobody needs it.
-- **Participant revoked or expired:** no new key or lease is issued. Their access ends at the next
-  online launch, or when their current lease expires. A participant who already extracted the key
-  from memory keeps that config's current content, which is why rotation exists.
-- **KEK compromise:** generate a new KEK and re-wrap all CEKs under it. This is a server-side
-  maintenance command, with no participant impact.
+- **Suspected key leak, or a fix to a config:** run ConfigGen publish (fresh CEK) and upload to the
+  same `Config` row. The new SHA-256 makes clients fetch the new file and key at their next
+  online launch. A participant still offline keeps the old file until their lease runs out.
+- **A materially different config:** a new `Config` row; reassign participants; retire the old row.
+- **Participant revoked or expired:** no new keys or leases; access ends at the next online launch
+  or when the lease expires. One who extracted the key from memory keeps that config's current
+  content, which is why rotation exists.
+- **Install removed:** its tokens and proofs stop working at once; its cached lease stops at the
+  next online launch or expiry.
+- **Release secret suspected leaked:** block that build's config delivery; ship a new build.
+- **KEK compromise:** new KEK, re-wrap all CEKs and release secrets. Server-side only.
 
 ## Server key management
 
-The server holds two long-lived secrets. (The existing JWT signing key is the same kind of
-secret.)
+Long-lived server secrets (the JWT signing key is the same kind):
 
-- **The KEK**, which wraps CEKs in the database. It's a **single secret in configuration**
-  (`Configs:KeyEncryptionKey`, base64, with a `Configs:KeyEncryptionKeyId`), loaded like
-  `Jwt:SigningKey`:
-  - from .NET User Secrets in Development;
-  - from an environment variable or file on the VPS.
+- **The KEK** wraps CEKs and release secrets. A single secret in configuration
+  (`Configs:KeyEncryptionKey`, base64, with `Configs:KeyEncryptionKeyId`), loaded like
+  `Jwt:SigningKey`: .NET User Secrets in Development, an environment variable or file on the VPS.
+  Without it (or without the lease key) the app still starts, and config delivery is off: the config
+  endpoints answer `503 config_delivery_unavailable` and the staff page says so. That is the rollout's
+  switch. ASP.NET Data Protection was rejected: its key ring would be one more thing to protect and back up.
+- **The lease-signing private key** (`Configs:LeaseSigningKey`, base64 PKCS#8 DER of a P-256 key). The staff
+  Configs page shows its public half, which AxoSync embeds.
+- **The nonce key** for install proofs is derived from `Jwt:SigningKey` (HKDF), so it is not one more
+  secret. Losing it only invalidates nonces in flight.
 
-  The app fails at startup if the KEK is missing. ASP.NET Data Protection was rejected: its key
-  ring would be one more thing to protect and back up, and its automatic rotation adds little
-  when each config already has its own key.
-- **The lease-signing private key.**
+Making them (once per server; never commit them):
 
-**Where they live operationally.**
-- On the VPS, as files or environment variables readable only by the service user.
-- Outside the rsync-deployed app directory, and **outside whatever the backup job copies**.
+```bash
+openssl rand -base64 32                                            # Configs:KeyEncryptionKey
+openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -outform DER | base64
+                                                                    # Configs:LeaseSigningKey
+```
 
-The running server must be able to read them, so anyone who gains control of the VPS gets them
-along with the DB. The KEK does not defend against that. It defends against the DB or a backup
-leaking on its own, which is the more likely accident.
+On the VPS they are files or environment variables readable only by the service user, outside the
+rsync-deployed app directory and **outside whatever the backup job copies**. Anyone who takes
+the VPS gets them along with the DB; the KEK defends against the DB or a backup leaking on its
+own, which is the more likely accident.
 
-**Losing the KEK is recoverable.**
-- The plaintext sources remain in the AxoSync repo. If the KEK is lost, generate a new one,
-  re-run ConfigGen publish and re-upload. Participants get the new files at their next online
-  sign-in.
-- The lease-signing key is also replaceable. But replacing it needs an AxoSync release with the
-  new public key, which is why that key deserves a backup.
+**Losing them is recoverable.** Without the KEK: a new KEK, re-run ConfigGen publish and
+re-upload, and ship a build (its release secret is then wrapped under the new KEK). The
+lease-signing key is replaceable too, but needs an AxoSync release with the new public key, which
+is why it deserves a backup.
 
-Neither is a crown jewel whose loss is catastrophic, so the backup copy doesn't need elaborate
-protection.
+**Backup copies** go in a password manager with end-to-end encryption (Proton Pass), in an unshared
+vault, on an account with a strong unique password and 2FA (ideally a hardware key). Its recovery
+phrase is written down and stored physically.
 
-**Backup copy.** A password manager with end-to-end encryption, such as Proton Pass, is a
-reasonable place for these, provided that:
+**Where the real exposure is**, ranked by what an attacker would gain:
 
-- the Proton account has a strong unique password and 2FA, ideally a hardware key;
-- the secrets sit in a vault that isn't shared.
-
-A paper copy of the secrets isn't needed, given the recoverability above. What should be written
-down and stored physically is the Proton account's own recovery phrase.
-
-**Where the real exposure is.** Ranked by what an attacker would gain:
-
-1. **The plaintext INI sources** in `axosync/ConfigGen/Assets/`. They're in git, so they're on
-   every clone, on the git host, and in the history. This outranks everything in this service.
-   See "Decisions so far" for when to move them.
-2. **The VPS.** It holds the KEK, the DB, the blobs and the signing key, and so every config. Keep
-   SSH key-only, the OS patched, and a minimal set of services running.
-3. **Staff accounts.** Any Staff account can upload configs and assign them. See the Staff 2FA
-   open question.
+1. **The plaintext INI sources** in `axosync/ConfigGen/Assets/`, in git on every clone, the git
+   host and the history. See "Decisions so far".
+2. **The VPS.** It holds the KEK, the DB, the blobs and the signing keys. Keep SSH key-only, the OS
+   patched, services minimal.
+3. **Staff accounts.** Any Staff account can upload and assign configs, which is why privileged
+   roles require 2FA (see "Two-factor authentication").
 4. **The password manager**, holding the backup copies.
 
 ## Threat model: extraction by a participant
 
-A participant who controls the machine AxoSync runs on can get the plaintext config. Some ways:
+A participant who controls the machine AxoSync runs on can get the plaintext config, for example
+by dumping process memory, hooking the parser, or reverse-engineering the protected methods to
+recover the release secret. No key-delivery scheme fixes this while the PC needs the plaintext to
+run the pipeline. What we can do, cheapest first:
 
-- dumping process memory, or attaching a debugger and reading the parsed INI;
-- patching or hooking the .NET assembly (dnSpy, Harmony) to log the output of `DecryptResource`.
-  Obfuscation slows this down but doesn't stop it;
-- unprotecting the DPAPI record as the same user. This yields the CEK and makes the offline lease
-  checks moot;
-- intercepting TLS with their own root CA. Certificate pinning raises the bar, but it can be
-  patched out.
+1. **Limit the blast radius** (this design): each participant gets only their assigned config;
+   each config has its own key; deliveries are bound to an install and a build; every issuance is
+   audited.
+2. **Deterrence and traceability.** Participant agreements that cover the software and configs.
+   Later, **watermarking**: ConfigGen generates offline a pool of copies of each config, each with
+   its own CEK and a recorded code (tiny, behaviour-neutral changes to non-round float
+   parameters, plus cosmetic marks), and the server hands each unit an unused copy on first
+   issuance. The server still never holds plaintext. A replay check over recorded sessions must
+   show each copy's output stays within a set bound of the base config's, since this is a
+   research cohort. A `ConfigGen identify` command ranks the likely source of a leaked copy.
+3. **Raise the cost** (this design, section 2): Reactor virtualization of the code that holds the
+   release secret and decrypts, with its own crypto rather than hookable library calls. Later: the
+   config parser moved into AxoSync and protected too; certificate pinning.
+4. **Move the IP off the PC.** The only structural fix: the pipeline and its config run on the
+   device, behind the MCU's debug lock, and the PC never sees them. `msv4` (nRF54L15) is built
+   that way, but it is far from being the shipping product: the pipeline's CPU budget on it
+   hasn't been met and the full build hasn't been tested. Until it ships, the PC design above is
+   the protection. On the current hardware (MS-V2, PIC32MX, no code protection) a config stored on
+   the unit would be easier to extract than from the PC, so that's not an option.
 
-No key-delivery scheme fixes this. As long as the PC app needs the plaintext to run the pipeline,
-the PC's owner can obtain it. What we can do, cheapest first:
+## Later
 
-1. **Limit the blast radius** (already in this design).
-   - Each participant receives only their assigned config.
-   - Each config has its own key, and replacing a config's file rotates that key.
-   - Every key issuance is audited.
-2. **Deterrence and traceability.**
-   - Participant agreements that cover the software and configs.
-   - Optionally, per-issuance **watermarking**: the server derives a unique, harmless variant of
-     the config for each device, so a leaked copy identifies its source. This requires the server
-     to produce per-device ciphertext: it holds the plaintext (encrypted under the KEK) and
-     encrypts on issuance, instead of storing ConfigGen's output directly. The same change would
-     support future per-participant calibration, so the two may arrive together.
-   - Watermarking is a separate, pending discussion.
-3. **Raise the cost.** These are speed bumps, worth adding only if cheap:
-   - Native AOT for the parts of AxoSync that handle the config (much harder to patch than IL);
-   - anti-debug checks;
-   - avoiding a single obvious decrypt-and-parse chokepoint;
-   - certificate pinning.
-4. **Move the IP off the PC.** This is the only structural fix. The sensitive parts of the
-   pipeline (filters, thresholds, calibration) would run in the MindStone firmware. The config
-   would be delivered to the device encrypted to a device key held in the MCU (readout-protected,
-   or in a secure element if the hardware has one), and the PC app would never see it. Extraction
-   would then require attacking hardware.
-
-   **Not viable on current hardware.**
-   - The shipping MS-V2 uses a PIC32MX250F128D: 128 KB flash, 32 KB RAM, no FPU, no secure
-     storage.
-   - Code-protect is deliberately off (see `firmware/DEVICE_IDENTITY.md`), so a hobbyist
-     programmer reads the whole flash. A config stored there would be *easier* to extract than
-     from the PC app.
-   - The chip also can't run the pipeline.
-
-   **Storing configs on the device without running the pipeline there is strictly worse.** The PC
-   still needs the plaintext, so that exposure remains, and a flash dump becomes a second
-   exposure. Only running the pipeline on the device removes the PC exposure.
-
-   **What a future hardware revision would need:**
-   - an MCU with robust readout protection plus isolated key storage (e.g. an nRF53/nRF54-class
-     part with TrustZone and a key management unit), or an external secure element;
-   - enough compute for the pipeline;
-   - a signed firmware-update path that doesn't depend on reading flash back.
-
-   Even then, the risk shifts to lab-grade attacks (fault injection) rather than disappearing. On
-   loaned units that come back at the end of the study, those attacks are also more likely to be
-   detected.
-
-   **Compute and battery cost.**
-   - The full pipeline takes about 16 ms per run on a modern i7 with vectorized native code
-     (FFTW/PocketFFT, OpenBLAS).
-   - A Cortex-M33 like the STM32H5 (250 MHz, single-precision FPU) is plausibly one to two orders
-     of magnitude slower on that workload. Unless the pipeline is restructured for embedded use,
-     a run could take longer than the interval between runs.
-   - Even if it fit, running the MCU flat out would draw roughly as much as the EEG front end and
-     the radio combined. That means roughly halving battery life on a head-worn device, where a
-     bigger battery isn't an option.
-
-   These are estimates; profile before deciding.
-
-   **Partial split.** Only the cheap decision layer (thresholds, calibration, classifier weights)
-   would run on the device, with the PC sending features over BLE. This avoids the compute
-   problem, but:
-   - it adds BLE round-trip latency;
-   - it exposes the decision layer to black-box queries. A simple (e.g. linear) decision function
-     can be reconstructed from a modest number of them.
-
-   **Conclusion.** On-device processing isn't worth it for IP protection alone. Revisit it only if
-   the product wants it for other reasons (a standalone device, latency), and with a profile of
-   which stages dominate the 16 ms.
-
-For the current cohort (loaned devices, identifiable participants under agreements), the plan is:
-- item 1 now;
-- item 2's agreements now, and watermarking if and when it's agreed;
-- item 3 opportunistically;
-- item 4 evaluated separately with the firmware work.
-
-## What changes in AxoSync
-
-- **ConfigGen:** add the publish mode (fresh CEK, `.cfg` + `.key` output), and stop writing into
-  `AxoSync/Assets/config`.
-- **AxoSync:**
-  - remove the embedded configs and the password dialog from Release builds;
-  - add a config-fetch step after sign-in and device detection;
-  - add a blob cache keyed by SHA-256;
-  - add the DPAPI-wrapped offline lease with its checks;
-  - embed the lease-verification public key.
-
-  `DecryptResource` stays as it is.
-- **Debug builds** may keep a local-file path for development convenience, still excluded from
-  Release.
+- **Emergency offline lease.** For VPS downtime: the participant's AxoSync shows an activation
+  request (the install's public key, account, unit, build), staff produce a short signed lease
+  and wrapped key with an offline ConfigGen command from backups (the KEK and lease-signing key
+  from the password manager, the wrapped CEK from the latest DB backup), and email it back. The
+  file is only usable by that install. Tabled; it needs those secrets on a staff machine, so it
+  should stay rare.
+- **Watermarking**, as above.
+- **Protected config parser** in AxoSync.
+- **Platform attestation** on iOS and Android (App Attest, Play Integrity), which can prove a
+  genuine app is calling. Desktop has no equivalent.
 
 ## Decisions so far
 
-- **Offline use is required.** It's handled by signed offline leases (section 5).
-- **The offline lease lasts 7 days by default.** Staff can extend it for one account on request,
-  up to 30 days (`Configs:MaxOfflineLeaseDays`).
-- **There is one general default config**, plus experimental configs issued by hand. The staff
-  assignment form pre-selects the default, and staff confirm it. Nothing is assigned
-  automatically.
-- **Configs aren't versioned.** A different config is a new `Config` row. Replacing a file in
-  place is only for key rotation or fixes. There is no version pinning.
-- **The KEK is a single secret in configuration**, loaded like the JWT signing key, and it carries
-  a key ID for later rotation.
-- **Backup copies of server secrets** go in the password manager (Proton Pass, with 2FA). The
-  operational copies live on the VPS, outside the app directory and the backup set.
-- **The pipeline stays on the PC.**
-  - On-device processing isn't feasible on the MS-V2 (PIC32), and on an STM32H5-class part it
-    would cost too much battery for IP protection alone.
-  - Revisit when choosing the MCU for the next hardware revision, and only if the product wants
-    on-device processing for its own sake.
-  - The nRF52840 port would need `APPROTECT` and has no key management unit, so an
-    nRF53/nRF54-class part or a secure element is the likelier candidate.
-- **Plaintext sources stay in the AxoSync repo for now**, while one person has access. Before
-  anyone else gets access to that repo, move them out *and* rewrite its history, since the history
-  holds every past config plus `ConfigPasswords.cs`. Until then:
-  - the GitHub account(s) with access keep 2FA, ideally with a hardware key;
-  - the repo stays private;
-  - no third-party GitHub Apps or Actions get read access to the repo.
+- **Offline use is required**, through signed leases: 7 days by default, up to 30 for one account
+  on request.
+- **One general default config** plus experimental configs issued by hand; staff confirm every
+  assignment.
+- **Configs aren't versioned.** A different config is a new `Config` row.
+- **Deliveries are bound to an install and a build** (layers 1–3); a valid token alone yields
+  nothing usable.
+- **Install limit: 6 per account by default**, one per target platform plus one spare, with a
+  per-account override; idle installs expire after 60 days.
+- **Per-release secrets are protected with Reactor virtualization**, with AxoSync's own crypto
+  inside the protected methods. No native component. TINS.Core stays unprotected (hot paths).
+- **The two units without a serial** are replaced before the config-less build ships.
+- **2FA (TOTP plus recovery codes) is optional for every account and required for privileged
+  roles** (Staff, Admin, Manufacturer, Publisher). Refresh never asks for a code.
+- **The browser head gets no configs**, until the pipeline runs on the unit (`msv4`) or in the cloud.
+- **`Device` is renamed `ClientInstall`**: in this service a device is an Intelimensa unit, and a
+  client install is a registered copy of AxoSync.
+- **A staged update fetches the new build's wrapped key before installing**, so offline use
+  survives an update; a failed fetch never blocks the update.
+- **The KEK is a single secret in configuration** with a key ID; backups in Proton Pass; operational
+  copies on the VPS outside the app directory and the backup set.
+- **The pipeline stays on the PC** until `msv4` is proven.
+- **Plaintext sources stay in the AxoSync repo for now**, while one person has access. Before anyone
+  else gets access, move them out *and* rewrite the history (it holds every past config plus
+  `ConfigPasswords.cs`). Until then: 2FA (ideally a hardware key) on the GitHub account(s) with
+  access, the repo private, and no third-party GitHub Apps or Actions with read access.
 
 ## Open questions
 
-1. **Staff 2FA:**
-   - Not required while Staff is limited to the co-founders.
-   - Revisit when the service is deployed to the VPS. It's cheap there: authenticator-app codes
-     (TOTP) are built into ASP.NET Core Identity.
-   - It would apply to the Staff and Manufacturer roles only.
-2. **Watermarking and per-participant configs:** pending a separate discussion. If adopted, the
-   server encrypts per device on issuance, and the upload flow changes (see "Threat model",
-   item 2).
+1. **Browser and cloud pipeline:** tabled until `msv4` ships or cloud compute is available.
+
+## As built (server)
+
+The server side is on `accounts`' `remote-config` branch. Where it settled something open above, or
+departed from it:
+
+- **Unbound tokens still exist.** A login without `install` (Quarry, the publish scripts, AxoSync builds
+  from before this) gets tokens bound to no install. They work as before for everything except configs:
+  the config endpoints need a bound token (policy `InstallClient`, else 403) and its proof.
+- **Proofs** are checked by `Security/InstallProofMiddleware` for every `/api` request on a bound token,
+  after authorization; login and refresh check their own (`Api/Auth/AuthEndpoints.cs`). The login body
+  carries both public keys, and the whole body is covered by the proof, so there is no separate
+  signature over the agreement key.
+- **A removed install stays removed.** Its signing key can't register again (400 `install_invalid`); the
+  client makes new keys and signs in as a new install.
+- **Builds:** only a *published* release's artifact with a release secret, not blocked, gets keys; a draft
+  doesn't. `version=development` uses `Configs:DevelopmentReleaseSecret`, which the server refuses to start
+  with outside Development. The secret travels in `X-Release-Secret` on the artifact upload (or the staff
+  Releases form); the response's `hasReleaseSecret` says whether the build will receive configs.
+- **Errors** are `{"error": code}`: `install_proof_required`, `install_nonce_stale`, `install_proof_invalid`,
+  `install_revoked` (401); `install_invalid` (400) and `install_limit` (409) at login;
+  `version_and_platform_required` (400), `build_not_supported` (403), `not_registered`, `not_assigned`,
+  `no_config` (404) and `config_delivery_unavailable` (503) from the config endpoints.
+- **The staff alert** for many new installs is a warning in the server log, not an email.
+- **Testing:** `scripts/test-server.sh start` turns delivery on with throwaway keys, and
+  `dotnet run scripts/config-delivery-smoke.cs` drives the whole flow against it as AxoSync would (about 40
+  checks). The format tests are `ConfigDeliveryVectorTests`.

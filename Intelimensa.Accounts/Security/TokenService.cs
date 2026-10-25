@@ -13,11 +13,17 @@ namespace Intelimensa.Accounts.Security;
 /// <summary>
 /// Issues short-lived JWT access tokens and longer-lived opaque refresh tokens. Refresh tokens
 /// are stored hashed (SHA-256) -- the raw value is only ever handed back to the caller once, at
-/// issuance -- and rotate on every use (<see cref="ValidateAndRotateRefreshTokenAsync"/>).
+/// issuance -- and rotate on every use (<see cref="FindActiveRefreshTokenAsync"/>, then
+/// <see cref="RotateAsync"/>). Tokens from a login that registered a <see cref="ClientInstall"/> are bound
+/// to it: the access token carries <see cref="ClientInstallClaim"/>, and the refresh token's row the install.
 /// </summary>
 public class TokenService(ApplicationDbContext db, IConfiguration configuration)
 {
-    public (string Token, DateTimeOffset ExpiresAt) CreateAccessToken(ApplicationUser user, IEnumerable<string> roles)
+    /// <summary>The bound install's id, in an access token. Requests on such a token need that install's proof.</summary>
+    public const string ClientInstallClaim = "client_install";
+
+    public (string Token, DateTimeOffset ExpiresAt) CreateAccessToken(
+        ApplicationUser user, IEnumerable<string> roles, Guid? clientInstallId = null)
     {
         var lifetime = TimeSpan.FromMinutes(configuration.GetValue("Jwt:AccessTokenLifetimeMinutes", 15));
         var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
@@ -31,6 +37,8 @@ public class TokenService(ApplicationDbContext db, IConfiguration configuration)
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        if (clientInstallId is { } installId)
+            claims.Add(new Claim(ClientInstallClaim, installId.ToString("D")));
 
         var token = new JwtSecurityToken(
             issuer: configuration["Jwt:Issuer"],
@@ -42,33 +50,37 @@ public class TokenService(ApplicationDbContext db, IConfiguration configuration)
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 
-    public async Task<(string Token, DateTimeOffset ExpiresAt)> CreateRefreshTokenAsync(string userId, CancellationToken ct = default)
+    public async Task<(string Token, DateTimeOffset ExpiresAt)> CreateRefreshTokenAsync(
+        string userId, Guid? clientInstallId = null, CancellationToken ct = default)
     {
-        var (entity, rawToken) = BuildRefreshToken(userId);
+        var (entity, rawToken) = BuildRefreshToken(userId, clientInstallId);
         db.RefreshTokens.Add(entity);
         await db.SaveChangesAsync(ct);
         return (rawToken, entity.ExpiresAt);
     }
 
-    /// <summary>
-    /// Validates a refresh token and rotates it (issuing + persisting a replacement, revoking the
-    /// original) in one step. Returns null if the token is unknown, expired, or already revoked.
-    /// </summary>
-    public async Task<(string UserId, string Token, DateTimeOffset ExpiresAt)?> ValidateAndRotateRefreshTokenAsync(string rawToken, CancellationToken ct = default)
+    /// <summary>The token's row if it is known, unexpired and not revoked; null otherwise.</summary>
+    public async Task<RefreshToken?> FindActiveRefreshTokenAsync(string rawToken, CancellationToken ct = default)
     {
         var hash = Hash(rawToken);
         var existing = await db.RefreshTokens.FirstOrDefaultAsync(r => r.TokenHash == hash, ct);
-        if (existing is null || !existing.IsActive)
-            return null;
+        return existing is { IsActive: true } ? existing : null;
+    }
 
-        var (replacement, newRawToken) = BuildRefreshToken(existing.UserId);
+    /// <summary>
+    /// Rotates an active refresh token: persists a replacement bound to the same install and revokes the
+    /// original. The caller has checked everything else (account, install proof) first.
+    /// </summary>
+    public async Task<(string Token, DateTimeOffset ExpiresAt)> RotateAsync(RefreshToken existing, CancellationToken ct = default)
+    {
+        var (replacement, newRawToken) = BuildRefreshToken(existing.UserId, existing.ClientInstallId);
         existing.RevokedAt = DateTimeOffset.UtcNow;
         existing.ReplacedByTokenId = replacement.Id;
 
         db.RefreshTokens.Add(replacement);
         await db.SaveChangesAsync(ct);
 
-        return (existing.UserId, newRawToken, replacement.ExpiresAt);
+        return (newRawToken, replacement.ExpiresAt);
     }
 
     public async Task RevokeAsync(string rawToken, CancellationToken ct = default)
@@ -82,7 +94,7 @@ public class TokenService(ApplicationDbContext db, IConfiguration configuration)
         }
     }
 
-    private (RefreshToken Entity, string RawToken) BuildRefreshToken(string userId)
+    private (RefreshToken Entity, string RawToken) BuildRefreshToken(string userId, Guid? clientInstallId)
     {
         var lifetime = TimeSpan.FromDays(configuration.GetValue("Jwt:RefreshTokenLifetimeDays", 30));
         var rawToken = GenerateRawToken();
@@ -90,6 +102,7 @@ public class TokenService(ApplicationDbContext db, IConfiguration configuration)
         {
             UserId = userId,
             TokenHash = Hash(rawToken),
+            ClientInstallId = clientInstallId,
             ExpiresAt = DateTimeOffset.UtcNow.Add(lifetime),
         };
         return (entity, rawToken);

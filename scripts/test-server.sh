@@ -101,6 +101,19 @@ cmd_start() {
   export Releases__StoragePath="$DIR/releases"
   export Firmware__StoragePath="$DIR/firmware-files"
   export Jwt__SigningKey; Jwt__SigningKey="$(openssl rand -base64 64 | tr -d '\n')"
+  # Throwaway config-delivery secrets (docs/config-management.md), so delivery is on. Debug builds of AxoSync
+  # ask with version=development and open keys wrapped with the development release secret; delivery.env keeps it
+  # (and the lease public key) for scripts.
+  export Configs__StoragePath="$DIR/config-files"
+  export Configs__KeyEncryptionKey; Configs__KeyEncryptionKey="$(openssl rand -base64 32 | tr -d '\n')"
+  export Configs__LeaseSigningKey
+  Configs__LeaseSigningKey="$(openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null \
+    | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 | tr -d '\n')"
+  export Configs__DevelopmentReleaseSecret; Configs__DevelopmentReleaseSecret="$(openssl rand -base64 32 | tr -d '\n')"
+  {
+    echo "DEVELOPMENT_RELEASE_SECRET=$Configs__DevelopmentReleaseSecret"
+    echo "LEASE_PUBLIC_KEY=$(echo "$Configs__LeaseSigningKey" | base64 -d | openssl pkey -inform DER -pubout -outform DER | base64 | tr -d '\n')"
+  } > "$DIR/delivery.env"
   export Logging__LogLevel__Default=Warning
 
   echo "Migrating a fresh database..."
@@ -143,7 +156,8 @@ cmd_start() {
 print_info() {
   echo "  URL        $(cat "$URLFILE")"
   echo "  login      $TEST_EMAIL / $TEST_PASSWORD   (roles: Staff, Manufacturer, Publisher)"
-  echo "  data dir   $DIR   (database, releases, firmware-files: all throwaway)"
+  echo "  data dir   $DIR   (database, releases, firmware-files, config-files: all throwaway)"
+  echo "  delivery   on, with throwaway keys; $DIR/delivery.env has the development release secret"
   echo "  log        $LOGFILE"
   echo "  stop with  scripts/test-server.sh stop"
 }

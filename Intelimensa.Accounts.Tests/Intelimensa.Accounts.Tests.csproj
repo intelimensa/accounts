@@ -32,6 +32,8 @@
     <Content Include="..\testdata\firmware-image-vectors.json" Link="testdata\firmware-image-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\testdata\serial-number-vectors.json" Link="testdata\serial-number-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\testdata\api-vectors.json" Link="testdata\api-vectors.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Config delivery's wire formats; this repo owns it (scripts/gen-config-delivery-vectors.py). -->
+    <Content Include="..\testdata\config-delivery-vectors.json" Link="testdata\config-delivery-vectors.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The firmware repo owns this one (firmware/testdata/gen-identity-vectors.py); sync-vectors.sh keeps the copy identical. -->
     <Content Include="..\testdata\identity-vectors.json" Link="testdata\identity-vectors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

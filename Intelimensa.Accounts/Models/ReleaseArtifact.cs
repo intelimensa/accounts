@@ -26,6 +26,24 @@ public class ReleaseArtifact
     /// </summary>
     public string? Signature { get; set; }
 
+    /// <summary>
+    /// The 32-byte secret compiled into this build, wrapped by <c>KeyEncryption</c> for purpose
+    /// <c>release-secret/{version}/{platform}</c>. Config keys delivered to this build are wrapped with it,
+    /// so only this build's code can open them. Null for builds published without one: they get no configs.
+    /// </summary>
+    public string? WrappedReleaseSecret { get; set; }
+
+    /// <summary>Which KEK wrapped <see cref="WrappedReleaseSecret"/>.</summary>
+    public string? ReleaseSecretKekId { get; set; }
+
+    /// <summary>
+    /// Set by staff to stop delivering config keys to this build (too old, or its secret is suspected
+    /// leaked); its participants are told to update.
+    /// </summary>
+    public DateTimeOffset? ConfigDeliveryBlockedAt { get; set; }
+
+    public bool CanReceiveConfigs => WrappedReleaseSecret is not null && ConfigDeliveryBlockedAt is null;
+
     /// <summary>Opaque key understood by <c>IReleaseStorage</c> -- not a filesystem path.</summary>
     public required string StorageKey { get; set; }
 

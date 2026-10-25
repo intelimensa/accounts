@@ -54,7 +54,7 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
     }
 
     public async Task<IActionResult> OnPostUploadAsync(
-        int releaseId, ReleasePlatform platform, IFormFile? file, string? signature, CancellationToken ct)
+        int releaseId, ReleasePlatform platform, IFormFile? file, string? signature, string? releaseSecret, CancellationToken ct)
     {
         var release = await db.Releases.FirstOrDefaultAsync(r => r.Id == releaseId, ct);
         if (release is null) return NotFound();
@@ -62,7 +62,7 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
             return await FailAsync("Choose a file to upload.");
 
         await using var content = file.OpenReadStream();
-        var result = await publisher.UploadArtifactAsync(release.Version, platform, file.FileName, content, signature, ct);
+        var result = await publisher.UploadArtifactAsync(release.Version, platform, file.FileName, content, signature, ct, releaseSecret);
         if (!result.Ok) return await FailAsync(result.Message!);
 
         StatusMessage = $"Uploaded {result.Value!.FileName} for {platform.DisplayName()} ({release.Version}).";
@@ -76,6 +76,18 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
         if (!result.Ok) return await FailAsync(result.Message!);
 
         StatusMessage = $"Removed {result.Value!.FileName}.";
+        return RedirectToPage();
+    }
+
+    public async Task<IActionResult> OnPostConfigDeliveryAsync(int artifactId, bool blocked)
+    {
+        var result = await publisher.SetConfigDeliveryBlockedAsync(artifactId, blocked);
+        if (result.Error == PublishError.NotFound) return NotFound();
+        if (!result.Ok) return await FailAsync(result.Message!);
+
+        StatusMessage = blocked
+            ? $"Config delivery to {result.Value!.Release!.Version} ({result.Value.Platform.DisplayName()}) is blocked."
+            : $"Config delivery to {result.Value!.Release!.Version} ({result.Value.Platform.DisplayName()}) is allowed again.";
         return RedirectToPage();
     }
 

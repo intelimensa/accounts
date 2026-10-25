@@ -143,8 +143,9 @@ public static class ReleaseEndpoints
     }
 
     /// <summary>
-    /// Body is the raw installer; <c>fileName</c> is a query parameter and the signature goes in the
-    /// <c>X-Release-Signature</c> header. Streamed to disk, never buffered.
+    /// Body is the raw installer; <c>fileName</c> is a query parameter, the signature goes in the
+    /// <c>X-Release-Signature</c> header and the build's release secret (optional; without it the build gets no
+    /// configs) in <c>X-Release-Secret</c>. Streamed to disk, never buffered.
     /// </summary>
     private static async Task<IResult> UploadAsync(
         string version,
@@ -162,12 +163,12 @@ public static class ReleaseEndpoints
         if (limit is { IsReadOnly: false }) limit.MaxRequestBodySize = MaxArtifactBytes;
 
         var signature = http.Request.Headers["X-Release-Signature"].ToString();
-        var result = await publisher.UploadArtifactAsync(version, platform, fileName, http.Request.Body, signature, ct);
+        var releaseSecret = http.Request.Headers["X-Release-Secret"].ToString();
+        var result = await publisher.UploadArtifactAsync(version, platform, fileName, http.Request.Body, signature, ct, releaseSecret);
         if (!result.Ok) return ToProblem(result.Error!.Value, result.Message!);
 
         var artifact = result.Value!;
-        return Results.Ok(new PublishedArtifactResponse(
-            artifact.Platform.ToString(), artifact.FileName, artifact.SizeBytes, artifact.Sha256, artifact.Signature is not null));
+        return Results.Ok(ToResponse(artifact));
     }
 
     private static async Task<IResult> SetStatusAsync(
@@ -201,6 +202,9 @@ public static class ReleaseEndpoints
         release.Version, release.Status.ToString(), release.Notes, release.MinimumVersion, release.PublishedAt,
         release.Artifacts
             .OrderBy(a => a.Platform)
-            .Select(a => new PublishedArtifactResponse(a.Platform.ToString(), a.FileName, a.SizeBytes, a.Sha256, a.Signature is not null))
+            .Select(ToResponse)
             .ToList());
+
+    private static PublishedArtifactResponse ToResponse(ReleaseArtifact a) =>
+        new(a.Platform.ToString(), a.FileName, a.SizeBytes, a.Sha256, a.Signature is not null, a.WrappedReleaseSecret is not null);
 }

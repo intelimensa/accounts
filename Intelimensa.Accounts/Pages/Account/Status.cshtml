@@ -71,6 +71,36 @@
                     }
                 </dd>
 
+                <dt class="col-sm-4">AxoSync installations</dt>
+                <dd class="col-sm-8">
+                    @if (!Model.Installs.Any())
+                    {
+                        <span class="text-muted">None signed in.</span>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0">
+                            @foreach (var install in Model.Installs)
+                            {
+                                <li class="d-flex flex-wrap align-items-center gap-2">
+                                    <span>
+                                        <strong>@(install.Name ?? install.Platform.ToString())</strong>
+                                        <span class="text-muted small">
+                                            (@install.Platform@(install.AppVersion is null ? "" : $", AxoSync {install.AppVersion}"),
+                                            last used @install.LastActivity.ToString("yyyy-MM-dd"))
+                                        </span>
+                                    </span>
+                                    <form method="post" asp-page-handler="RemoveInstall" class="mb-0"
+                                          onsubmit="return confirm('Remove this installation? It is signed out at once.');">
+                                        <input type="hidden" name="installId" value="@install.Id" />
+                                        <button type="submit" class="btn btn-link btn-sm text-danger p-0">Remove</button>
+                                    </form>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </dd>
+
                 <dt class="col-sm-4">Research study</dt>
                 <dd class="col-sm-8 mb-0">
                     @if (Model.StudyParticipation is null)

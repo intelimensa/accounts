@@ -6,9 +6,20 @@
 
 <h1 class="h3 mb-3">Configs</h1>
 
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
 @if (Model.ErrorMessage is not null)
 {
     <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+@if (!Model.DeliveryAvailable)
+{
+    <div class="alert alert-warning" role="alert">
+        Config delivery is off on this server: <code>Configs:KeyEncryptionKey</code> and <code>Configs:LeaseSigningKey</code>
+        must both be set (see docs/config-management.md). @(Model.CanUpload ? "Files can be uploaded, but nothing is delivered yet." : "Files can't be uploaded either.")
+    </div>
 }
 
 <div class="feature-card mb-4">
@@ -16,7 +27,7 @@
     <form method="post" asp-page-handler="Create" class="row g-2 align-items-end">
         <div class="col-sm-4">
             <label asp-for="Input.Key" class="form-label"></label>
-            <input asp-for="Input.Key" class="form-control" placeholder="e.g. ms2" />
+            <input asp-for="Input.Key" class="form-control" placeholder="e.g. ms5" />
             <span asp-validation-for="Input.Key" class="text-danger"></span>
         </div>
         <div class="col-sm-5">
@@ -38,14 +49,78 @@
 <div class="d-flex flex-column gap-2">
     @foreach (var config in Model.Configs)
     {
-        <div class="feature-card d-flex justify-content-between align-items-center">
-            <div>
-                <strong>@config.DisplayName</strong>
-                <div class="text-muted small">Key: @config.Key &middot; Version @config.CurrentVersion</div>
+        <div class="feature-card">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div>
+                    <strong>@config.DisplayName</strong>
+                    @if (config.IsDefault)
+                    {
+                        <span class="badge text-bg-primary ms-1">Default</span>
+                    }
+                    @if (config.RetiredAt is { } retiredAt)
+                    {
+                        <span class="badge text-bg-secondary ms-1">Retired @retiredAt.ToString("yyyy-MM-dd")</span>
+                    }
+                    <div class="text-muted small">Key: @config.Key</div>
+                    @if (config.HasFile)
+                    {
+                        <div class="text-muted small text-break">
+                            File uploaded @config.UploadedAt?.ToString("yyyy-MM-dd HH:mm") &middot; @config.BlobSize bytes &middot; SHA-256 @config.BlobSha256
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="small text-danger">No file yet: participants assigned this config get nothing.</div>
+                    }
+                </div>
+                <div class="d-flex gap-2">
+                    @if (!config.IsDefault && config.RetiredAt is null)
+                    {
+                        <form method="post" asp-page-handler="MakeDefault">
+                            <input type="hidden" name="configId" value="@config.Id" />
+                            <button type="submit" class="btn btn-ia-outline btn-sm">Make default</button>
+                        </form>
+                    }
+                    <form method="post" asp-page-handler="Retire"
+                          onsubmit="return @(config.RetiredAt is null ? "confirm('Retire this config? It stops being delivered to everyone assigned it.')" : "true");">
+                        <input type="hidden" name="configId" value="@config.Id" />
+                        <input type="hidden" name="retire" value="@(config.RetiredAt is null ? "true" : "false")" />
+                        <button type="submit" class="btn btn-link btn-sm @(config.RetiredAt is null ? "text-danger" : "")">
+                            @(config.RetiredAt is null ? "Retire" : "Un-retire")
+                        </button>
+                    </form>
+                </div>
             </div>
+            @if (Model.CanUpload)
+            {
+                <form method="post" asp-page-handler="Upload" enctype="multipart/form-data" class="row g-2 align-items-end mt-1">
+                    <input type="hidden" name="configId" value="@config.Id" />
+                    <div class="col-sm-4">
+                        <label class="form-label small mb-0">Config file (.cfg)</label>
+                        <input type="file" name="blob" accept=".cfg" class="form-control form-control-sm" required />
+                    </div>
+                    <div class="col-sm-4">
+                        <label class="form-label small mb-0">Key file (.key)</label>
+                        <input type="file" name="key" accept=".key" class="form-control form-control-sm" required />
+                    </div>
+                    <div class="col-sm-4">
+                        <button type="submit" class="btn btn-ia-outline btn-sm w-100"
+                                onclick="return @(config.HasFile ? "confirm('Replace this config\\'s file? Clients fetch the new file and key at their next online launch.')" : "true");">
+                            @(config.HasFile ? "Replace file" : "Upload file")
+                        </button>
+                    </div>
+                </form>
+            }
         </div>
     }
 </div>
+
+@if (Model.LeasePublicKey is not null)
+{
+    <div class="mt-4 small text-muted text-break">
+        Lease-signing public key (what AxoSync embeds to check offline leases): <code>@Model.LeasePublicKey</code>
+    </div>
+}
 
 <p class="mt-3"><a asp-page="/Staff/Index">&larr; Back to accounts</a></p>
 

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Intelimensa.Accounts.ConfigDelivery;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Storage;
@@ -51,6 +52,7 @@ public partial class ReleasePublisher(
     ApplicationDbContext db,
     IReleaseStorage storage,
     IOptions<ReleasePublishingOptions> options,
+    KeyEncryption keys,
     ILogger<ReleasePublisher> logger)
 {
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._ -]*$")]
@@ -101,9 +103,15 @@ public partial class ReleasePublisher(
         return Ok(release);
     }
 
-    /// <summary>Stores one platform's installer on a draft, replacing a previous upload for that platform.</summary>
+    /// <summary>
+    /// Stores one platform's installer on a draft, replacing a previous upload for that platform.
+    /// <paramref name="releaseSecret"/> is the base64 32-byte secret compiled into this build
+    /// (docs/config-management.md, section 2); without one the build gets no configs. It is kept only wrapped
+    /// under the KEK, and a replaced upload takes the new upload's secret (or none).
+    /// </summary>
     public async Task<PublishResult<ReleaseArtifact>> UploadArtifactAsync(
-        string version, ReleasePlatform platform, string? fileName, Stream content, string? signature, CancellationToken ct)
+        string version, ReleasePlatform platform, string? fileName, Stream content, string? signature, CancellationToken ct,
+        string? releaseSecret = null)
     {
         var release = await db.Releases.Include(r => r.Artifacts).FirstOrDefaultAsync(r => r.Version == version, ct);
         if (release is null)
@@ -123,6 +131,27 @@ public partial class ReleasePublisher(
         signature = string.IsNullOrWhiteSpace(signature) ? null : signature.Trim();
         if (signature is null && SignatureRequired)
             return Fail<ReleaseArtifact>(PublishError.Invalid, "A signature is required.");
+
+        string? wrappedSecret = null;
+        if (!string.IsNullOrWhiteSpace(releaseSecret))
+        {
+            byte[] secret;
+            try
+            {
+                secret = Convert.FromBase64String(releaseSecret.Trim());
+            }
+            catch (FormatException)
+            {
+                return Fail<ReleaseArtifact>(PublishError.Invalid, "The release secret isn't base64.");
+            }
+            if (secret.Length != CekWrap.ReleaseSecretSize)
+                return Fail<ReleaseArtifact>(PublishError.Invalid, "The release secret must be 32 bytes.");
+            if (!keys.CanWrap)
+                return Fail<ReleaseArtifact>(PublishError.Invalid,
+                    "This server can't store a release secret: Configs:KeyEncryptionKey is not configured.");
+            wrappedSecret = keys.Wrap(KeyEncryption.ReleaseSecretPurpose(release.Version, platform.ToString()), secret);
+            System.Security.Cryptography.CryptographicOperations.ZeroMemory(secret);
+        }
 
         var stored = await storage.SaveAsync(release.Version, platform, fileName, content, ct);
         if (stored.SizeBytes == 0)
@@ -158,6 +187,9 @@ public partial class ReleasePublisher(
             existing.Sha256 = stored.Sha256;
             existing.StorageKey = stored.StorageKey;
             existing.Signature = signature;
+            existing.WrappedReleaseSecret = wrappedSecret;
+            existing.ReleaseSecretKekId = wrappedSecret is null ? null : keys.KeyId;
+            existing.ConfigDeliveryBlockedAt = null;
             existing.UploadedAt = DateTimeOffset.UtcNow;
         }
         else
@@ -171,13 +203,15 @@ public partial class ReleasePublisher(
                 Sha256 = stored.Sha256,
                 StorageKey = stored.StorageKey,
                 Signature = signature,
+                WrappedReleaseSecret = wrappedSecret,
+                ReleaseSecretKekId = wrappedSecret is null ? null : keys.KeyId,
             };
             db.ReleaseArtifacts.Add(existing);
         }
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("Uploaded {File} for release {Version} ({Platform}, {Size} bytes, sha256 {Sha256}, signed: {Signed})",
-            fileName, release.Version, platform, stored.SizeBytes, stored.Sha256, signature is not null);
+        logger.LogInformation("Uploaded {File} for release {Version} ({Platform}, {Size} bytes, sha256 {Sha256}, signed: {Signed}, release secret: {HasSecret})",
+            fileName, release.Version, platform, stored.SizeBytes, stored.Sha256, signature is not null, wrappedSecret is not null);
         return Ok(existing);
     }
 
@@ -195,6 +229,23 @@ public partial class ReleasePublisher(
         storage.Delete(artifact.StorageKey);
         db.ReleaseArtifacts.Remove(artifact);
         await db.SaveChangesAsync();
+        return Ok(artifact);
+    }
+
+    /// <summary>
+    /// Stops (or resumes) delivering config keys to one build, whatever the release's status: for a build that is
+    /// too old or whose release secret is suspected leaked. Its participants are told to update.
+    /// </summary>
+    public async Task<PublishResult<ReleaseArtifact>> SetConfigDeliveryBlockedAsync(int artifactId, bool blocked)
+    {
+        var artifact = await db.ReleaseArtifacts.Include(a => a.Release).FirstOrDefaultAsync(a => a.Id == artifactId);
+        if (artifact is null)
+            return Fail<ReleaseArtifact>(PublishError.NotFound, "No such artifact.");
+
+        artifact.ConfigDeliveryBlockedAt = blocked ? artifact.ConfigDeliveryBlockedAt ?? DateTimeOffset.UtcNow : null;
+        await db.SaveChangesAsync();
+        logger.LogWarning("Config delivery to {Version} ({Platform}) is now {State}",
+            artifact.Release!.Version, artifact.Platform, blocked ? "blocked" : "allowed");
         return Ok(artifact);
     }
 

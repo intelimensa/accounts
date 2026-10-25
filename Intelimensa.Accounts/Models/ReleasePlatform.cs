@@ -2,7 +2,7 @@ namespace Intelimensa.Accounts.Models;
 
 /// <summary>
 /// The OS/architecture targets an AxoSync build can be published for. Distinct from
-/// <see cref="DevicePlatform"/> (what a registered client machine reports about itself) -- this
+/// <see cref="ClientPlatform"/> (what a registered client install reports about itself) -- this
 /// is per-build, so it carries the CPU architecture too.
 /// </summary>
 public enum ReleasePlatform

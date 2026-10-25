@@ -5,7 +5,7 @@ namespace Intelimensa.Accounts.Models;
 /// accounts with an active (non-withdrawn) <see cref="StudyParticipation"/>; see
 /// <c>/api/telemetry</c> for the ingestion endpoint that enforces that gate. Attributed to the
 /// <see cref="AccountDevice"/> pairing (i.e. the physical BCI unit the account was using), not the
-/// client-computer <see cref="Device"/> -- the learning-curve analysis this exists for cares about
+/// AxoSync install (<see cref="ClientInstall"/>) -- the learning-curve analysis this exists for cares about
 /// which hardware/config combination produced these numbers, not which OS ran the desktop app.
 /// </summary>
 public class TelemetryEvent

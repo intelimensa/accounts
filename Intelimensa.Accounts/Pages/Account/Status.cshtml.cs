@@ -13,8 +13,27 @@ public class StatusModel(
     UserManager<ApplicationUser> userManager,
     ApplicationDbContext db,
     EmailConfirmation emailConfirmation,
+    Intelimensa.Accounts.Security.ClientInstallRegistry installs,
     ILogger<StatusModel> log) : PageModel
 {
+    /// <summary>
+    /// Removes one of the user's own AxoSync installs: its tokens stop working at once, and it can only come back
+    /// by signing in again (as a new install).
+    /// </summary>
+    public async Task<IActionResult> OnPostRemoveInstallAsync(Guid installId)
+    {
+        var userId = userManager.GetUserId(User);
+        var install = await db.ClientInstalls
+            .FirstOrDefaultAsync(i => i.Id == installId && i.Account!.UserId == userId && i.RevokedAt == null);
+        if (install is not null)
+        {
+            await installs.RevokeAsync(install, DateTimeOffset.UtcNow);
+            log.LogInformation("User {UserId} removed AxoSync install {InstallId}", userId, install.Id);
+            Message = $"Removed {install.Name ?? install.Platform.ToString()}. It is signed out and can't fetch configs any more.";
+        }
+        return RedirectToPage();
+    }
+
     public bool EmailConfirmed { get; private set; }
 
     public bool CanDownload => Intelimensa.Accounts.Security.AccountPolicy.IsUsable(Account);
@@ -55,6 +74,8 @@ public class StatusModel(
 
     public List<DeviceRow> Devices { get; private set; } = [];
 
+    public List<ClientInstall> Installs { get; private set; } = [];
+
     public StudyParticipation? StudyParticipation { get; private set; }
 
     public async Task OnGetAsync()
@@ -77,6 +98,12 @@ public class StatusModel(
                 .Include(ad => ad.BciDevice)
                 .Include(ad => ad.AssignedConfig)
                 .ToListAsync();
+
+            var now = DateTimeOffset.UtcNow;
+            Installs = (await db.ClientInstalls.Where(i => i.AccountId == Account.Id && i.RevokedAt == null).ToListAsync())
+                .Where(i => i.IsActive(now, installs.IdleWindow))
+                .OrderByDescending(i => i.LastActivity)
+                .ToList();
 
             Devices = accountDevices
                 .OrderBy(ad => ad.RegisteredAt)

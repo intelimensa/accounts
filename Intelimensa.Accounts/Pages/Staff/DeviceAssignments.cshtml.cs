@@ -18,6 +18,9 @@ public class DeviceAssignmentsModel(ApplicationDbContext db) : PageModel
 
     public List<Config> Configs { get; private set; } = [];
 
+    /// <summary>Pre-selected for a pairing with no config yet; staff still confirm it with Save.</summary>
+    public int? DefaultConfigId => Configs.FirstOrDefault(c => c.IsDefault && c.RetiredAt is null)?.Id;
+
     public string? StatusMessage { get; set; }
 
     public async Task OnGetAsync()
@@ -30,6 +33,14 @@ public class DeviceAssignmentsModel(ApplicationDbContext db) : PageModel
         var pairing = await db.AccountDevices.FirstOrDefaultAsync(ad => ad.Id == accountDeviceId);
         if (pairing is not null)
         {
+            // A retired config may stay on the pairings that have it, but isn't handed out anew.
+            if (assignedConfigId is { } configId && configId != pairing.AssignedConfigId &&
+                await db.Configs.AnyAsync(c => c.Id == configId && c.RetiredAt != null))
+            {
+                StatusMessage = "That config is retired and can't be newly assigned.";
+                await LoadAsync();
+                return Page();
+            }
             pairing.AssignedConfigId = assignedConfigId;
             await db.SaveChangesAsync();
             StatusMessage = "Assignment updated.";
