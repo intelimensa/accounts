@@ -19,7 +19,7 @@
 #   - Every deploy and rollback appends a line to $DEPLOY_ROOT/backups/deploy.log on the server (time, who,
 #     what, migrations, backup file, and whether the service came up). Nothing reads it back but 'log'.
 #   - It refuses to deploy if the server has run a migration this checkout doesn't know (older code), or if
-#     the app directory holds data (a database, uploaded releases or firmware) that the switch would lose.
+#     the app directory holds data (a database, uploaded releases, firmware or config files) that the switch would lose.
 #
 # It needs ssh access as the deploy user, with sudo for 'systemctl' and 'journalctl' on the server (sudo may
 # ask for a password once per run). First-time server setup is not this script's job: follow the runbook.
@@ -112,7 +112,7 @@ case "$cmd" in
     [ -f "$DB" ] || die "no database at $DB (first deploy? follow docs/deployment-vps.md)."
     # Anything in the app directory that isn't the published app would be lost when versions are switched.
     stray="$(find "$APP" -maxdepth 1 \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \
-              -o -name releases -o -name firmware-files \) | head -5)"
+              -o -name releases -o -name firmware-files -o -name config-files \) | head -5)"
     [ -z "$stray" ] || die "the app directory holds data that a deploy would lose; move it under $ROOT/data first:
 $stray"
     sqlite3 "$DB" "select 'migration:' || MigrationId from __EFMigrationsHistory order by MigrationId"

@@ -304,7 +304,9 @@ into `/etc/intelimensa-accounts/config-delivery.env` (root only, `0600`, directo
 drop-in `/etc/systemd/system/intelimensa-accounts.service.d/config-delivery.conf` (`EnvironmentFile=`). Don't move them into the
 unit, and never regenerate them on a running server: a new key-encryption key makes every stored config key unreadable (the
 recovery is in config-management.md). `systemctl show -p EnvironmentFiles intelimensa-accounts` shows the file is wired in. The
-lease public key is in `axosync/ConfigLeaseKeys.txt`.
+lease public key is in `axosync/ConfigLeaseKeys.txt`. The same file sets where uploaded config files go,
+`Configs__StoragePath=/var/www/accounts/data/config-files`: outside the app directory like releases and firmware (the default,
+`config-files` next to the app, would be deleted by the next deploy's switch; `deploy.sh` refuses to deploy while one is there).
 
 ## 8. systemd service
 
