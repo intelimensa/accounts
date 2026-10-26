@@ -55,8 +55,10 @@ and `kill -CONT` it afterwards (`stop` would delete its data).
 
 - **Production secrets** (2026-10-26): generated on the VPS into `/etc/intelimensa-accounts/config-delivery.env` (root only),
   read through a systemd drop-in (`deployment-vps.md`, section 7); not yet used, the running server predates config delivery. The
-  lease public key is in `axosync/ConfigLeaseKeys.txt`. Still open: the backup copy in the password manager (done by hand, so the
-  values never leave the server any other way), and whether anything (provider snapshots, a cron job) backs up `/etc` on the VPS.
+  lease public key is in `axosync/ConfigLeaseKeys.txt`. The backup copy is in the password manager (copied by hand). The VPS
+  has no backups yet; a plan is to be bought the week of 2026-11-02. **When it is set up:** exclude `/etc/intelimensa-accounts`
+  if the backup is file-based; a whole-disk provider snapshot can't exclude it, so that would put the secrets in the snapshots
+  too (accepted, or reconsider then).
 
 **Next, in this order**
 1. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
