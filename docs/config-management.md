@@ -65,10 +65,18 @@ and `kill -CONT` it afterwards (`stop` would delete its data).
   login and registration requests exactly and reads the delivery, then opens it with the delivery fixture's keys. Quarry's copy is on
   firmware's `remote-config` branch.
 
+- **Deployed to production** (2026-10-26, `fa56c34` from `remote-config`): both migrations applied (the old `Devices` table was empty;
+  units, tokens and releases kept), config files stored in `/var/www/accounts/data/config-files`. `ms5` was published with
+  ConfigGen and is live (key under `kek-1`). Existing AxoSync builds are unaffected: their logins carry no install and they keep
+  the password dialog.
+
 **Next, in this order**
-1. **Deploy**: deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
-   empty before the migration drops it), publish the configs with ConfigGen, release an AxoSync built with a secret.
-2. **Rollout steps 2 and 3** (below).
+1. **Release an AxoSync built with a secret** (the usual release and publish scripts from `remote-config`): the first build that
+   loads configs from the server; the password dialog stays as its fallback.
+2. **Pair and assign:** participants' AxoSync registers their unit on first use; staff assign `ms5` on Staff > Device Assignments
+   (mark `ms5` the default on Staff > Configs so it is pre-selected).
+3. **Rollout step 3** (below), once every active participant gets their config from the server and every unit reports a serial;
+   then merge the `remote-config` branches.
 
 ## Where we are today
 
@@ -505,7 +513,7 @@ first.
 into its repo's `main` when that step is ready.
 
 1. Server: install registration and proofs, then the config endpoints, release-secret upload and
-   leases, behind a flag. AxoSync keeps the password path. *(Built, not deployed.)*
+   leases, behind a flag. AxoSync keeps the password path. *(Deployed 2026-10-26; `ms5` published.)*
 2. AxoSync: install keys and proofs in `AccountsClient`; then config fetch, falling back to the
    password dialog when the server can't deliver. Watch the issuance log for failures from real
    participants. *(Built and tried with a MindStone against the test server; not released.)*
