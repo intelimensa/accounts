@@ -70,12 +70,16 @@ and `kill -CONT` it afterwards (`stop` would delete its data).
   ConfigGen and is live (key under `kek-1`). Existing AxoSync builds are unaffected: their logins carry no install and they keep
   the password dialog.
 
+- **AxoSync 0.1.0-alpha.11 released** (2026-10-26, tagged on `remote-config` at `c94cbb8`, built and published with
+  `release-all.sh`): the first release that loads configs from the server, password dialog kept as the fallback. Verified in
+  production the same day: signed in on Windows and macOS (one install each), the unit MSV3G0000017 registered with the code read
+  from it, `ms5` assigned, keys issued to both builds. Until the merge, release from `remote-config`: `main` lacks the tag and
+  would build as an older version.
+
 **Next, in this order**
-1. **Release an AxoSync built with a secret** (the usual release and publish scripts from `remote-config`): the first build that
-   loads configs from the server; the password dialog stays as its fallback.
-2. **Pair and assign:** participants' AxoSync registers their unit on first use; staff assign `ms5` on Staff > Device Assignments
+1. **Pair and assign:** participants' AxoSync registers their unit on first use; staff assign `ms5` on Staff > Device Assignments
    (mark `ms5` the default on Staff > Configs so it is pre-selected).
-3. **Rollout step 3** (below), once every active participant gets their config from the server and every unit reports a serial;
+2. **Rollout step 3** (below), once every active participant gets their config from the server and every unit reports a serial;
    then merge the `remote-config` branches.
 
 ## Where we are today
@@ -516,7 +520,7 @@ into its repo's `main` when that step is ready.
    leases, behind a flag. AxoSync keeps the password path. *(Deployed 2026-10-26; `ms5` published.)*
 2. AxoSync: install keys and proofs in `AccountsClient`; then config fetch, falling back to the
    password dialog when the server can't deliver. Watch the issuance log for failures from real
-   participants. *(Built and tried with a MindStone against the test server; not released.)*
+   participants. *(Released in 0.1.0-alpha.11, 2026-10-26; in use.)*
 3. A release without embedded configs or `ConfigPasswords`, once **every active participant has
    received a config through the server and every unit in use reports a serial** (the two units
    without one are replaced first). Pull the old installers from distribution.
