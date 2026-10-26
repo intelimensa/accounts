@@ -22,7 +22,13 @@ Everything below is committed and nothing is pushed: `accounts` and `axosync` on
   the unit, said "not assigned" until `ms5` was assigned, then loaded it and streamed (0 samples missing); a relaunch went
   straight to the unit's config; a relaunch with the server unresponsive loaded the offline copy in 8 s. Two fixes came out of
   it (a 30 s wait before that dialog; a `--connect` session sharing the installed app's saved login).
-- `publish.sh` uploads a build's release secret and the server stores it. `check-contracts.sh` passes.
+- **An obfuscated macOS release build** (`osx/release.sh`, 0.1.0-alpha.10.16): built with its release secret, published to the test
+  server with `publish.sh` (secret stored, local copy deleted), launched against it: the config was delivered for that version,
+  opened with the compiled-in secret, and the unit streamed. `check-contracts.sh` passes.
+- **Reactor virtualization of the config crypto is deferred.** It was tried: with the attribute, Reactor virtualized every method
+  that handles key material (checked on a mapping-file run with NecroBit off), but its VM threw `NotSupportedException` when the
+  obfuscated build opened a config (most likely the span-based code). The methods need rewriting for the VM in a later update;
+  until then they get Reactor's general protection (NecroBit, control flow, renaming). Notes on `ProtectedCrypto` in axosync.
 - The two migrations were rehearsed on a copy of the dev database seeded with 17 units: unit identities, pairings and
   assignments came out byte-identical.
 
@@ -43,8 +49,8 @@ and `kill -CONT` it afterwards (`stop` would delete its data).
 **Next, in this order**
 1. **The PowerShell scripts on the PC**: `release.ps1` (writes `<installer>.release-secret`), `publish.ps1` (uploads it) and, from the
    Mac, `windows/release-remote.sh` (fetches it). Untested: there is no PowerShell 7 on the Mac.
-2. **A real release build**: confirm in ILSpy that `ProtectedCrypto`, `ConfigUnlock` and `ReleaseSecret` are virtualized by Reactor,
-   and that the build still runs (smoke test).
+2. **The Windows release build**, as on the Mac: build with a secret, publish to a test server, run it with a unit.
+   *(Virtualization of the config crypto: a later update, see above.)*
 3. **Production secrets** (on the VPS, outside the app directory and the backup set; backups in the password manager):
    `Configs:KeyEncryptionKey` and `Configs:LeaseSigningKey` (commands under "Server key management"). Put the lease public key (shown
    on Staff > Configs) in `axosync/ConfigLeaseKeys.txt`, or release builds can't use configs offline.
