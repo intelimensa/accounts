@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Intelimensa.Accounts.Api.Auth;
+using Intelimensa.Accounts.Api.ConfigDelivery;
+using Intelimensa.Accounts.Api.Devices;
 using Intelimensa.Accounts.Api.Manufacturing;
 using Intelimensa.Accounts.Api.Updates;
 using Intelimensa.Accounts.Models;
@@ -36,6 +38,11 @@ public class ApiVectorTests
         ["FirmwareWriteRequest"] = typeof(FirmwareWriteRequest),
         ["UnitResponse"] = typeof(UnitResponse),
         ["UpdateCheckResponse"] = typeof(UpdateCheckResponse),
+        ["RegisterDeviceRequest"] = typeof(RegisterDeviceRequest),
+        ["RegisterDeviceResponse"] = typeof(RegisterDeviceResponse),
+        ["ConfigDeliveryResponse"] = typeof(ConfigDeliveryResponse),
+        ["ConfigDraftRequest"] = typeof(ConfigDraftRequest),
+        ["PublishedConfigResponse"] = typeof(PublishedConfigResponse),
     };
 
     public static TheoryData<string> ExampleNames()

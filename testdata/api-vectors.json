@@ -1,6 +1,6 @@
 {
   "contract": "intelimensa-accounts-api-v1",
-  "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check). Owner: accounts repo (testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the wire. The server must read every `request` into its record and write every `response` back out identically (nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read every `response`. Update-check examples carry a `context` (the client's platform, version and trusted key) and the `expect`ed result of AxoSync's check. `tolerated`: JSON a client must still read. `errors`: bodies a client may meet. `rekeyReasons`: the reasons a station may send; anything else is refused.",
+  "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check, device registration, config delivery and config publishing). Owner: accounts repo (testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the wire. The server must read every `request` into its record and write every `response` back out identically (nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read every `response`. Update-check examples carry a `context` (the client's platform, version and trusted key) and the `expect`ed result of AxoSync's check. `tolerated`: JSON a client must still read. `errors`: bodies a client may meet. `rekeyReasons`: the reasons a station may send; anything else is refused.",
   "rekeyReasons": [
     "Reflash",
     "Rework"
@@ -49,6 +49,123 @@
         "refreshToken": "r3fr3sh-t0k3n-0003",
         "refreshTokenExpiresAt": "2026-11-17T10:00:00+00:00",
         "isStudyParticipant": true
+      }
+    },
+    {
+      "name": "login-request-with-install",
+      "type": "LoginRequest",
+      "direction": "request",
+      "note": "AxoSync registers its install's two P-256 keys (base64 SPKI); the platform is a name. The request carries an install proof by signingKey (config-delivery-vectors.json, installProof). Tokens issued are bound to the install.",
+      "json": {
+        "email": "participant@example.com",
+        "password": "correct-horse-battery",
+        "install": {
+          "signingKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfkml5bYgLxJpDyvzWqz7DYG5kCOl0oOeoauHvc4bSZkBdQvIxTjTZoh/CIGJOK2FuhIV+YWPyxLOawI7EayEYA==",
+          "agreementKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG8A1J2Om9QwjBsVW4t/Oz6ZMrb0zypfIjZAaBDXFeIspUEZv1dEFMfdpLKApnG1+atnbeINWFjtskNr+OfLEqA==",
+          "platform": "MacOS",
+          "name": "MacBook Air",
+          "appVersion": "0.2.0",
+          "slot": 1
+        }
+      }
+    },
+    {
+      "name": "register-device-request",
+      "type": "RegisterDeviceRequest",
+      "direction": "request",
+      "note": "the code read from the unit; a pairing the account already has needs none",
+      "json": {
+        "serialNumber": "MSV3G01SATKX",
+        "registrationCode": "7KQ49XT2AM"
+      }
+    },
+    {
+      "name": "register-device-response",
+      "type": "RegisterDeviceResponse",
+      "direction": "response",
+      "note": "assignedConfigId stays null until staff assign a config",
+      "json": {
+        "accountDeviceId": "3f2c8a10-5d4e-4b6a-9e21-7c0d1b2a3f45",
+        "bciDeviceId": "8a6e4d2c-1b3f-4e5a-9c7d-0f1e2d3c4b5a",
+        "serialNumber": "MSV3G01SATKX",
+        "serialNumberLabel": "MSV3-G01S-ATKX",
+        "deviceType": "msv3",
+        "assignedConfigId": null,
+        "registeredAt": "2026-10-25T12:00:00+00:00"
+      }
+    },
+    {
+      "name": "config-delivery-response",
+      "type": "ConfigDeliveryResponse",
+      "direction": "response",
+      "note": "GET /api/devices/{serial}/config: the wrap and lease of config-delivery-vectors.json (they open with its keys). The lease's times are strings exactly as signed, not dates to reformat.",
+      "json": {
+        "configKey": "ms5",
+        "displayName": "MindStone 5",
+        "blobSha256": "0a2e55cd3f13ee168911973f4b675512c33cc262b5a6f8f5771b1b292ba22eed",
+        "blobSize": 143,
+        "blobUrl": "/api/configs/ms5/blob",
+        "wrappedCek": {
+          "ephemeralKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEws9qlCVKyw/7WxyCI3IbYcVJzmh2S3oe7uTF0AjlrokDImsKeSTU7oGpEReSbomVUljQn/cNfYiXaAOMFhXRpA==",
+          "nonce": "gM0XQQpy2FVS3IFX",
+          "ciphertext": "I1eHtkbzVkrVNvELq3ZjBQ9Q0aSRzbf7pnkDl2plyo4=",
+          "tag": "UkWB6vmVXOcyYLBqvBqE7w=="
+        },
+        "lease": {
+          "accountId": 42,
+          "clientInstallId": "6f1c2a9e-4b7d-4e2a-9c3b-1d5e8f7a6b40",
+          "serialNumber": "MSV3G01SATKX",
+          "configKey": "ms5",
+          "blobSha256": "0a2e55cd3f13ee168911973f4b675512c33cc262b5a6f8f5771b1b292ba22eed",
+          "issuedAt": "2026-10-25T12:00:00Z",
+          "notAfter": "2026-11-01T12:00:00Z"
+        },
+        "leaseSignature": "MEYCIQDZCHkrcGrOVIMCAq6GP82ml+Ji9xJBZVf3At0DHMbnXwIhAOWVQPye7ayufGoyp/E0BIQl+9lqOJl6WHFhwWj91Law"
+      }
+    },
+    {
+      "name": "config-draft-request",
+      "type": "ConfigDraftRequest",
+      "direction": "request",
+      "note": "PUT /api/publishing/configs/{key}: creates the config, or renames it",
+      "json": {
+        "displayName": "MindStone 5"
+      }
+    },
+    {
+      "name": "published-config-response",
+      "type": "PublishedConfigResponse",
+      "direction": "response",
+      "note": "after ConfigGen uploaded a new file: it waits as pending until Staff (or --auto-publish) publish it; ConfigGen checks pending.sha256 against its own",
+      "json": {
+        "key": "ms5",
+        "displayName": "MindStone 5",
+        "isDefault": true,
+        "retired": false,
+        "live": {
+          "sha256": "0a2e55cd3f13ee168911973f4b675512c33cc262b5a6f8f5771b1b292ba22eed",
+          "sizeBytes": 143,
+          "uploadedAt": "2026-10-20T09:00:00+00:00"
+        },
+        "pending": {
+          "sha256": "5d41402abc4b2a76b9719d911017c592ae8bd2e4d6a8a2b8f1b0d0c7e1f2a3b4",
+          "sizeBytes": 23530,
+          "uploadedAt": "2026-10-25T12:00:00+00:00"
+        }
+      }
+    },
+    {
+      "name": "published-config-response-new",
+      "type": "PublishedConfigResponse",
+      "direction": "response",
+      "note": "a config with no file yet",
+      "json": {
+        "key": "ms5",
+        "displayName": "MindStone 5",
+        "isDefault": false,
+        "retired": false,
+        "live": null,
+        "pending": null
       }
     },
     {
@@ -479,6 +596,14 @@
         "error": "platform is required."
       },
       "note": "an object with `error`; publish.sh reads it"
+    },
+    {
+      "family": "install proofs and config delivery",
+      "status": 401,
+      "bodyJson": {
+        "error": "install_nonce_stale"
+      },
+      "note": "an object with a machine-readable `error` code (docs/config-management.md, 'As built'); AxoSync retries once on install_nonce_stale / install_proof_required with the fresh nonce in the response's X-Install-Nonce header"
     }
   ]
 }

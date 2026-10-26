@@ -4,8 +4,10 @@
 The server (Intelimensa.Accounts/Api: AuthContracts.cs, ManufacturingContracts.cs, ReleaseContracts.cs) and its clients
 describe the same JSON in their own code, and nothing makes them agree:
   - MindStoneQuarry, Intelimensa.Quarry.Core/Accounts: AccountsModels.cs and AccountsClient.cs (/api/auth, /api/manufacturing)
-  - AxoSync, AxoSync/Accounts/AccountsClient.cs (/api/auth) and AxoSync/Updates/UpdateChecker.cs (/api/releases/latest),
-    which write and read the JSON by hand because release builds are obfuscated
+  - AxoSync, AxoSync/Accounts/AccountsClient.cs (/api/auth), AxoSync/Updates/UpdateChecker.cs (/api/releases/latest) and
+    AxoSync/ConfigDelivery/ConfigDeliveryClient.cs (/api/devices: registration, config delivery), which write and read the JSON
+    by hand because release builds are obfuscated
+  - ConfigGen's publish command (/api/publishing/configs; not tested against this file yet)
   - axosync/workflows/osx/publish.sh (the publishing API; not covered here)
 
 Each example is JSON as it goes over the wire: a `request` is what a client sends and the server must accept, a `response`
@@ -14,9 +16,11 @@ nulls kept, enums as numbers, dates as ISO 8601 with +00:00), so the server's ow
 `type` names the contract record; each consumer maps it to its own type.
 
 The update-check example uses the signature of a case in release-signing-vectors.json (its test key), so a client that
-verifies signatures can accept it. The output is deterministic. Usage: scripts/gen-api-vectors.py [OUTPUT.json]
+verifies signatures can accept it. The install and config-delivery examples use the keys, wrap and lease of
+config-delivery-vectors.json, so they open with its keys. The output is deterministic. Usage: scripts/gen-api-vectors.py [OUTPUT.json]
 Then run sync-vectors.sh in the workspace root. Needs: python3.
 """
+import base64
 import json
 import os
 import sys
@@ -24,12 +28,19 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "testdata", "api-vectors.json")
 SIGNING = os.path.join(HERE, "..", "testdata", "release-signing-vectors.json")
+DELIVERY = os.path.join(HERE, "..", "testdata", "config-delivery-vectors.json")
 
 
 def main():
     with open(SIGNING, encoding="ascii") as f:
         signing = json.load(f)
     signed = next(c for c in signing["cases"] if c["name"] == "valid-macos-arm64")
+    # config delivery's keys, wrap and lease, so the two fixtures describe the same delivery
+    with open(DELIVERY, encoding="ascii") as f:
+        delivery = json.load(f)
+    wrap = delivery["cekWrap"]
+    lease = next(c for c in delivery["offlineLease"]["cases"] if c["name"] == "valid")
+    blob = delivery["configBlob"]
 
     examples = []
 
@@ -53,6 +64,50 @@ def main():
         "refreshToken": "r3fr3sh-t0k3n-0003",
         "refreshTokenExpiresAt": "2026-11-17T10:00:00+00:00",
         "isStudyParticipant": True})
+
+    example("login-request-with-install", "LoginRequest", "request", {
+        "email": "participant@example.com", "password": "correct-horse-battery",
+        "install": {"signingKey": delivery["installProof"]["key"]["publicKey"],
+                    "agreementKey": wrap["agreementKey"]["publicKey"],
+                    "platform": "MacOS", "name": "MacBook Air", "appVersion": "0.2.0", "slot": 1}},
+        "AxoSync registers its install's two P-256 keys (base64 SPKI); the platform is a name. The request carries an install "
+        "proof by signingKey (config-delivery-vectors.json, installProof). Tokens issued are bound to the install.")
+
+    # ---- /api/devices ----------------------------------------------------------------------------------------------
+    example("register-device-request", "RegisterDeviceRequest", "request",
+            {"serialNumber": "MSV3G01SATKX", "registrationCode": "7KQ49XT2AM"},
+            "the code read from the unit; a pairing the account already has needs none")
+    example("register-device-response", "RegisterDeviceResponse", "response", {
+        "accountDeviceId": "3f2c8a10-5d4e-4b6a-9e21-7c0d1b2a3f45", "bciDeviceId": "8a6e4d2c-1b3f-4e5a-9c7d-0f1e2d3c4b5a",
+        "serialNumber": "MSV3G01SATKX", "serialNumberLabel": "MSV3-G01S-ATKX", "deviceType": "msv3",
+        "assignedConfigId": None, "registeredAt": "2026-10-25T12:00:00+00:00"},
+        "assignedConfigId stays null until staff assign a config")
+    example("config-delivery-response", "ConfigDeliveryResponse", "response", {
+        "configKey": wrap["configKey"], "displayName": "MindStone 5", "blobSha256": wrap["blobSha256"],
+        "blobSize": len(base64.b64decode(blob["blob"])), "blobUrl": "/api/configs/ms5/blob",
+        "wrappedCek": wrap["wrapped"],
+        "lease": {"accountId": lease["terms"]["accountId"], "clientInstallId": lease["terms"]["clientInstallId"],
+                  "serialNumber": lease["terms"]["serialNumber"], "configKey": lease["terms"]["configKey"],
+                  "blobSha256": lease["terms"]["blobSha256"], "issuedAt": lease["terms"]["issuedAt"],
+                  "notAfter": lease["terms"]["notAfter"]},
+        "leaseSignature": lease["signature"]},
+        "GET /api/devices/{serial}/config: the wrap and lease of config-delivery-vectors.json (they open with its keys). The "
+        "lease's times are strings exactly as signed, not dates to reformat.")
+
+    # ---- /api/publishing/configs (ConfigGen) ----------------------------------------------------------------------
+    example("config-draft-request", "ConfigDraftRequest", "request", {"displayName": "MindStone 5"},
+            "PUT /api/publishing/configs/{key}: creates the config, or renames it")
+    example("published-config-response", "PublishedConfigResponse", "response", {
+        "key": "ms5", "displayName": "MindStone 5", "isDefault": True, "retired": False,
+        "live": {"sha256": wrap["blobSha256"], "sizeBytes": len(base64.b64decode(blob["blob"])),
+                 "uploadedAt": "2026-10-20T09:00:00+00:00"},
+        "pending": {"sha256": "5d41402abc4b2a76b9719d911017c592ae8bd2e4d6a8a2b8f1b0d0c7e1f2a3b4", "sizeBytes": 23530,
+                    "uploadedAt": "2026-10-25T12:00:00+00:00"}},
+        "after ConfigGen uploaded a new file: it waits as pending until Staff (or --auto-publish) publish it; ConfigGen checks "
+        "pending.sha256 against its own")
+    example("published-config-response-new", "PublishedConfigResponse", "response", {
+        "key": "ms5", "displayName": "MindStone 5", "isDefault": False, "retired": False, "live": None, "pending": None},
+        "a config with no file yet")
 
     # ---- /api/manufacturing ---------------------------------------------------------------------------------------
     example("options-response", "ManufacturingOptionsResponse", "response", {
@@ -162,11 +217,15 @@ def main():
          "note": "ProblemDetails, for the few cases that use Results.Problem"},
         {"family": "releases and publishing", "status": 400, "bodyJson": {"error": "platform is required."},
          "note": "an object with `error`; publish.sh reads it"},
+        {"family": "install proofs and config delivery", "status": 401, "bodyJson": {"error": "install_nonce_stale"},
+         "note": "an object with a machine-readable `error` code (docs/config-management.md, 'As built'); AxoSync retries once on "
+                 "install_nonce_stale / install_proof_required with the fresh nonce in the response's X-Install-Nonce header"},
     ]
 
     doc = {
         "contract": "intelimensa-accounts-api-v1",
-        "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check). Owner: accounts repo "
+        "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check, device registration, "
+                       "config delivery and config publishing). Owner: accounts repo "
                        "(testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the "
                        "wire. The server must read every `request` into its record and write every `response` back out identically "
                        "(nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read "
