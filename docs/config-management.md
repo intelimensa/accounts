@@ -6,7 +6,7 @@ lease and the browser are deferred (see "Later"), and so is 2FA, to get delivery
 build settled something this doc left open, or departed from it, see "As built (server)" at the end. This doc replaces the
 "Config delivery model (planned)" section of `CLAUDE.md`.
 
-## Current state (paused 2026-10-25, waiting for a MindStone)
+## Current state (2026-10-26)
 
 Everything below is committed and nothing is pushed: `accounts` and `axosync` on `remote-config`, the workspace on `main`.
 
@@ -15,35 +15,43 @@ Everything below is committed and nothing is pushed: `accounts` and `axosync` on
   signed leases, release secrets. `scripts/config-delivery-smoke.cs` passes all its checks against the test server.
 - ConfigGen: `publish` (and `--offline`) and `selftest`; used with the real `ms5`/`ms2` sources against the test server.
 - AxoSync: install keys and signed requests (update check and download included), unit identity probe and registration,
-  delivery, offline cache, unit-swap prompt, update prefetch, release secret compiled in. 715 unit tests pass;
+  delivery, offline cache, unit-swap prompt, update prefetch, release secret compiled in. Unit tests pass;
   `ConfigDeliveryServerTests` passes against the test server (sign-in, signed update check, registration, delivery, offline
   launch from the cache, removed install).
+- **With a MindStone** (2026-10-26, MSV3-G000-0017, Debug build against the test server): first launch identified and registered
+  the unit, said "not assigned" until `ms5` was assigned, then loaded it and streamed (0 samples missing); a relaunch went
+  straight to the unit's config; a relaunch with the server unresponsive loaded the offline copy in 8 s. Two fixes came out of
+  it (a 30 s wait before that dialog; a `--connect` session sharing the installed app's saved login).
 - `publish.sh` uploads a build's release secret and the server stores it. `check-contracts.sh` passes.
 - The two migrations were rehearsed on a copy of the dev database seeded with 17 units: unit identities, pairings and
   assignments came out byte-identical.
 
+**Not yet tried with hardware:** the unit-swap prompt (needs a second unit), and registration with the code check on (the test
+server ran with `Devices:RequireRegistrationCode=false`, since the unit's code wasn't on it; the code check is covered by
+`ConfigDeliveryServerTests`, including a wrong code).
+
+**How to repeat the hardware test:** in the accounts repo, `Devices__RequireRegistrationCode=false scripts/test-server.sh start`;
+make the test account Active (`sqlite3 <data dir>/accounts.db "UPDATE AspNetUsers SET EmailConfirmed=1; UPDATE Accounts SET
+Status=0;"`) and insert the unit as `Manufactured` (`BciDevices`, its dashless serial, `Status` 1); publish a config
+(`AXOSYNC_PUBLISH_URL=<url> AXOSYNC_PUBLISH_EMAIL=test@example.com AXOSYNC_PUBLISH_PASSWORD=correct-horse-battery dotnet run
+--project ConfigGen -- publish ms5 --auto-publish` in axosync). Then in axosync, with `AXOSYNC_DEVELOPMENT_RELEASE_SECRET` and
+`AXOSYNC_LEASE_PUBLIC_KEY` from the server's `delivery.env`: `dotnet run --project AxoSync.Desktop -- --connect <url>`. Its account
+data goes in `accounts-127.0.0.1_<port>`, never the installed app's. Assign the config with the `AccountDevices` row's
+`AssignedConfigId`, or on Staff > Device Assignments. For the offline case, `kill -STOP` the server's pid (`<data dir>/server.pid`)
+and `kill -CONT` it afterwards (`stop` would delete its data).
+
 **Next, in this order**
-1. **Try it with a MindStone** (the step this pause waits for). In the accounts repo: `scripts/test-server.sh start`, then
-   publish a config to it (`AXOSYNC_PUBLISH_URL=<its url> AXOSYNC_PUBLISH_EMAIL=test@example.com
-   AXOSYNC_PUBLISH_PASSWORD=correct-horse-battery dotnet run --project ConfigGen -- publish ms5 --auto-publish` in axosync), and
-   make the test account Active (`sqlite3 <data dir>/accounts.db "UPDATE AspNetUsers SET EmailConfirmed=1; UPDATE Accounts SET
-   Status=0;"`). The unit must be a `Manufactured` unit in that database with its registration code: allocate and confirm it on the
-   test server's `/Manufacturing` page, or insert the row with the code's hash. Then in axosync, with the two values from the test
-   server's `delivery.env` exported as `AXOSYNC_DEVELOPMENT_RELEASE_SECRET` and `AXOSYNC_LEASE_PUBLIC_KEY`:
-   `dotnet run --project AxoSync.Desktop -- --connect <url>`. Check: the "Connect your MindStone" dialog, registration, "no config
-   assigned" (then assign it on Staff > Device Assignments), delivery, a relaunch (last unit), a relaunch offline, and a second unit
-   for the swap prompt if one is at hand.
-2. **The PowerShell scripts on the PC**: `release.ps1` (writes `<installer>.release-secret`), `publish.ps1` (uploads it) and, from the
+1. **The PowerShell scripts on the PC**: `release.ps1` (writes `<installer>.release-secret`), `publish.ps1` (uploads it) and, from the
    Mac, `windows/release-remote.sh` (fetches it). Untested: there is no PowerShell 7 on the Mac.
-3. **A real release build**: confirm in ILSpy that `ProtectedCrypto`, `ConfigUnlock` and `ReleaseSecret` are virtualized by Reactor,
+2. **A real release build**: confirm in ILSpy that `ProtectedCrypto`, `ConfigUnlock` and `ReleaseSecret` are virtualized by Reactor,
    and that the build still runs (smoke test).
-4. **Production secrets** (on the VPS, outside the app directory and the backup set; backups in the password manager):
+3. **Production secrets** (on the VPS, outside the app directory and the backup set; backups in the password manager):
    `Configs:KeyEncryptionKey` and `Configs:LeaseSigningKey` (commands under "Server key management"). Put the lease public key (shown
    on Staff > Configs) in `axosync/ConfigLeaseKeys.txt`, or release builds can't use configs offline.
-5. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
-6. **Push and deploy**: push the branches, deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
+4. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
+5. **Push and deploy**: push the branches, deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
    empty before the migration drops it), publish the configs with ConfigGen, release an AxoSync built with a secret.
-7. **Rollout steps 2 and 3** (below).
+6. **Rollout steps 2 and 3** (below).
 
 ## Where we are today
 
@@ -483,7 +491,7 @@ into its repo's `main` when that step is ready.
    leases, behind a flag. AxoSync keeps the password path. *(Built, not deployed.)*
 2. AxoSync: install keys and proofs in `AccountsClient`; then config fetch, falling back to the
    password dialog when the server can't deliver. Watch the issuance log for failures from real
-   participants. *(Built, waiting for a hardware test; not released.)*
+   participants. *(Built and tried with a MindStone against the test server; not released.)*
 3. A release without embedded configs or `ConfigPasswords`, once **every active participant has
    received a config through the server and every unit in use reports a serial** (the two units
    without one are replaced first). Pull the old installers from distribution.
