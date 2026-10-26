@@ -298,6 +298,14 @@ These go in the systemd unit's `Environment=` lines below (`/etc/systemd/system`
 files are root-owned and not world-readable, which is an acceptable place for
 secrets on a single-purpose VPS — avoid also committing them anywhere in the repo).
 
+**Except config delivery's secrets** (`Configs:KeyEncryptionKey`, `Configs:KeyEncryptionKeyId`, `Configs:LeaseSigningKey`; see
+[`config-management.md`](config-management.md), "Server key management"). They were generated on the server itself on 2026-10-26
+into `/etc/intelimensa-accounts/config-delivery.env` (root only, `0600`, directory `0700`), which the service reads through the
+drop-in `/etc/systemd/system/intelimensa-accounts.service.d/config-delivery.conf` (`EnvironmentFile=`). Don't move them into the
+unit, and never regenerate them on a running server: a new key-encryption key makes every stored config key unreadable (the
+recovery is in config-management.md). `systemctl show -p EnvironmentFiles intelimensa-accounts` shows the file is wired in. The
+lease public key is in `axosync/ConfigLeaseKeys.txt`.
+
 ## 8. systemd service
 
 Create `/etc/systemd/system/intelimensa-accounts.service`:

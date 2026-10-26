@@ -53,14 +53,16 @@ data goes in `accounts-127.0.0.1_<port>`, never the installed app's. Assign the 
 `AssignedConfigId`, or on Staff > Device Assignments. For the offline case, `kill -STOP` the server's pid (`<data dir>/server.pid`)
 and `kill -CONT` it afterwards (`stop` would delete its data).
 
+- **Production secrets** (2026-10-26): generated on the VPS into `/etc/intelimensa-accounts/config-delivery.env` (root only),
+  read through a systemd drop-in (`deployment-vps.md`, section 7); not yet used, the running server predates config delivery. The
+  lease public key is in `axosync/ConfigLeaseKeys.txt`. Still open: the backup copy in the password manager (done by hand, so the
+  values never leave the server any other way), and whether anything (provider snapshots, a cron job) backs up `/etc` on the VPS.
+
 **Next, in this order**
-1. **Production secrets** (on the VPS, outside the app directory and the backup set; backups in the password manager):
-   `Configs:KeyEncryptionKey` and `Configs:LeaseSigningKey` (commands under "Server key management"). Put the lease public key (shown
-   on Staff > Configs) in `axosync/ConfigLeaseKeys.txt`, or release builds can't use configs offline.
-2. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
-3. **Deploy**: deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
+1. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
+2. **Deploy**: deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
    empty before the migration drops it), publish the configs with ConfigGen, release an AxoSync built with a secret.
-4. **Rollout steps 2 and 3** (below).
+3. **Rollout steps 2 and 3** (below).
 
 ## Where we are today
 
