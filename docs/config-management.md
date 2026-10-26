@@ -30,7 +30,8 @@ Everything below is committed and nothing is pushed: `accounts` and `axosync` on
   run on the PC with a MindStone (test server reached through an SSH reverse tunnel, since AxoSync allows plain http only to
   loopback): signed in, identified the unit, loaded `ms5`, streamed; a relaunch went straight to the config. Fixed on the way:
   `release.ps1` used an API Windows PowerShell 5.1 lacks; the unit probe let one COM port's `ArgumentOutOfRangeException` end the
-  whole scan. `publish.ps1 -SelfTest` passes on the PC; its own upload of the secret hasn't run (it needs a signing key there).
+  whole scan. `publish.ps1` then published a further build (0.1.0-alpha.10.20) from the PC, signed with the YubiKey: secret stored on the server,
+  local copy deleted.
 - **Reactor virtualization of the config crypto is deferred.** It was tried: with the attribute, Reactor virtualized every method
   that handles key material (checked on a mapping-file run with NecroBit off), but its VM threw `NotSupportedException` when the
   obfuscated build opened a config (most likely the span-based code). The methods need rewriting for the VM in a later update;
@@ -53,14 +54,13 @@ data goes in `accounts-127.0.0.1_<port>`, never the installed app's. Assign the 
 and `kill -CONT` it afterwards (`stop` would delete its data).
 
 **Next, in this order**
-1. **`publish.ps1` publishing a build on the PC** (its secret upload); the rest of the Windows path is checked.
-2. **Production secrets** (on the VPS, outside the app directory and the backup set; backups in the password manager):
+1. **Production secrets** (on the VPS, outside the app directory and the backup set; backups in the password manager):
    `Configs:KeyEncryptionKey` and `Configs:LeaseSigningKey` (commands under "Server key management"). Put the lease public key (shown
    on Staff > Configs) in `axosync/ConfigLeaseKeys.txt`, or release builds can't use configs offline.
-3. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
-4. **Push and deploy**: push the branches, deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
+2. **Contracts left open**: the delivery and device endpoints' JSON into `api-vectors.json` (its copies are in Quarry and axosync).
+3. **Deploy**: deploy the server (`scripts/deploy.sh plan` first; check production's `Devices` table is
    empty before the migration drops it), publish the configs with ConfigGen, release an AxoSync built with a secret.
-5. **Rollout steps 2 and 3** (below).
+4. **Rollout steps 2 and 3** (below).
 
 ## Where we are today
 
