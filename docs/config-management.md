@@ -521,7 +521,7 @@ into its repo's `main` when that step is ready.
 2. AxoSync: install keys and proofs in `AccountsClient`; then config fetch, falling back to the
    password dialog when the server can't deliver. Watch the issuance log for failures from real
    participants. *(Released in 0.1.0-alpha.11, 2026-10-26; in use.)*
-3. A release without embedded configs or `ConfigPasswords`, once **every active participant has
+3. *(Built in axosync's `remote-config`, 2026-11-01; not yet released.)* A release without embedded configs or `ConfigPasswords`, once **every active participant has
    received a config through the server and every unit in use reports a serial** (the two units
    without one are replaced first). Pull the old installers from distribution.
 
@@ -721,8 +721,11 @@ AxoSync's side is on axosync's `remote-config` branch (`AxoSync/ConfigDelivery/`
   if the account doesn't have it, and loads its config. When another unit connects later, the operator is asked before switching.
 - **Every authenticated request is signed**, the update check and download included: the server requires the proof for every request
   on a bound token. A login saved by an older build stays unbound (updates only) until the user signs in again.
-- **Fallback during the transition:** whatever the server can't deliver, the old password dialog is one click away. It goes with the
-  configs embedded in the installer (rollout step 3).
+- **Fallback during the transition (alpha.11 and earlier):** whatever the server can't deliver, the old password dialog is one click away.
+  Rollout step 3 removes it: a Release build has no embedded configs, `ConfigLoader`, password dialogs or `ConfigPasswords`
+  (`AxoSync.csproj` compiles them in Debug only); the dialog offers only "Try again" and "Start without a configuration". A Debug
+  build started without `--connect` still auto-launches the config remembered in its preferences; with `--connect` it uses the server.
+  `biosemi` stays lab-only (Debug, never published) and `ms2` is discontinued.
 - **Keys are files for now** (DPAPI on Windows, 0600 elsewhere), like the refresh token; hardware stores (TPM, Secure Enclave) later.
 - **Untested so far:** the PowerShell release and publish scripts (no PowerShell 7 on the Mac it was built on), a release build's
   Reactor virtualization of the crypto methods, and the dialogs with real hardware.
