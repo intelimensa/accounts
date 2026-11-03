@@ -94,6 +94,22 @@ public class ReleasePurgeTests : IDisposable
         Assert.Equal(PublishError.NotFound, (await _publisher.PurgeFilesAsync(9999)).Error);
     }
 
+    [Fact]
+    public async Task Bulk_purge_skips_what_cannot_be_purged_and_still_purges_the_rest()
+    {
+        var a = await AddReleaseAsync("4.0.0", ReleaseStatus.Withdrawn, 100);
+        var b = await AddReleaseAsync("4.1.0", ReleaseStatus.Withdrawn, 200);
+        var live = await AddReleaseAsync("4.2.0", ReleaseStatus.Published, 50);
+
+        var summary = await _publisher.PurgeFilesAsync(new[] { a.Id, live.Id, b.Id, a.Id });
+
+        Assert.Equal(["4.0.0", "4.1.0"], summary.Purged);
+        Assert.Equal(300, summary.BytesFreed);
+        Assert.Single(summary.Skipped);
+        Assert.StartsWith("4.2.0:", summary.Skipped[0]);
+        Assert.Equal(["4.2.0/WindowsX64/app.bin"], _storage.Files);
+    }
+
     private sealed class FakeStorage : IReleaseStorage
     {
         public List<string> Files { get; } = [];

@@ -43,6 +43,8 @@ public record PublishResult<T>(T? Value, PublishError? Error, string? Message)
     public bool Ok => Error is null;
 }
 
+public record PurgeSummary(IReadOnlyList<string> Purged, IReadOnlyList<string> Skipped, long BytesFreed);
+
 /// <summary>
 /// The release-publishing rules, shared by the staff page (<c>/Staff/Releases</c>) and the
 /// publisher API so both enforce the same things: version format, drafts-only uploads, signature
@@ -259,6 +261,25 @@ public partial class ReleasePublisher(
 
         logger.LogWarning("Purged {Count} file(s) of withdrawn release {Version} ({Bytes} bytes)", keys.Count, release.Version, freed);
         return Ok(freed);
+    }
+
+    /// <summary>
+    /// Purges several withdrawn releases (see <see cref="PurgeFilesAsync(int)"/>), each on its own: one that can't be
+    /// purged (no longer withdrawn, nothing left) is skipped and reported, and the rest still go.
+    /// </summary>
+    public async Task<PurgeSummary> PurgeFilesAsync(IEnumerable<int> releaseIds)
+    {
+        var purged = new List<string>();
+        var skipped = new List<string>();
+        long freed = 0;
+        foreach (var id in releaseIds.Distinct())
+        {
+            var version = (await db.Releases.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id))?.Version ?? $"#{id}";
+            var result = await PurgeFilesAsync(id);
+            if (result.Ok) { purged.Add(version); freed += result.Value; }
+            else skipped.Add($"{version}: {result.Message}");
+        }
+        return new PurgeSummary(purged, skipped, freed);
     }
 
     /// <summary>

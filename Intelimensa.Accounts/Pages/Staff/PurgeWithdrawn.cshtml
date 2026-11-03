@@ -1,0 +1,63 @@
+@page
+@model Intelimensa.Accounts.Pages.Staff.PurgeWithdrawnModel
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.ServerInfo
+@{
+    ViewData["Title"] = "Staff: Purge withdrawn releases";
+}
+
+<h1 class="h3 mb-3">Purge all withdrawn releases</h1>
+
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+@if (Model.Releases.Count == 0)
+{
+    <p class="text-muted">No withdrawn release has files left to purge.</p>
+}
+else
+{
+    <div class="feature-card border-danger mb-3">
+        <p>
+            This permanently deletes the installers of <strong>@Model.Releases.Count withdrawn
+            release(s)</strong> from the server and frees <strong>@ByteSize.Format(Model.TotalBytes)</strong>.
+            It can't be undone.
+        </p>
+        <table class="table table-sm align-middle">
+            <thead><tr><th>Release</th><th>Platforms</th><th class="text-end">Size</th></tr></thead>
+            <tbody>
+            @foreach (var release in Model.Releases)
+            {
+                <tr>
+                    <td class="font-monospace">v@(release.Version)</td>
+                    <td>@string.Join(", ", release.Artifacts.OrderBy(a => a.Platform).Select(a => a.Platform.DisplayName()))</td>
+                    <td class="text-end">@ByteSize.Format(release.Artifacts.Sum(a => a.SizeBytes))</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <ul class="small">
+            <li>Each release stays as history, marked <em>files purged</em>. Its version number can't be reused.</li>
+            <li>The signatures and release secrets go with the files, so these builds can't be restored and get no more configs.</li>
+            <li>Anyone still running one keeps running it, but can't download it again.</li>
+        </ul>
+        <form method="post" class="row g-2 align-items-end">
+            @foreach (var id in Model.ReleaseIds)
+            {
+                <input type="hidden" name="ReleaseIds" value="@id" />
+            }
+            <div class="col-sm-6">
+                <label class="form-label" for="confirm">Type <code>@Model.ConfirmPhrase</code> to confirm</label>
+                <input id="confirm" asp-for="Confirm" class="form-control font-monospace" autocomplete="off" required />
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-danger">Purge all</button>
+                <a asp-page="/Staff/Releases" class="btn btn-ia-outline">Cancel</a>
+            </div>
+        </form>
+    </div>
+}
+
+<p class="mt-3"><a asp-page="/Staff/Releases">&larr; Back to releases</a></p>
