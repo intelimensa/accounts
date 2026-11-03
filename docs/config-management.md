@@ -79,8 +79,8 @@ and `kill -CONT` it afterwards (`stop` would delete its data).
 **Next, in this order**
 1. **Pair and assign:** participants' AxoSync registers their unit on first use; staff assign `ms5` on Staff > Device Assignments
    (mark `ms5` the default on Staff > Configs so it is pre-selected).
-2. **Rollout step 3** (below), once every active participant gets their config from the server and every unit reports a serial;
-   then merge the `remote-config` branches.
+2. **Rollout step 3** (below): **released 2026-11-03 as alpha.14.** Left: the two ms2 participants get new units, accounts and the new
+   build together (their old builds keep working until then); then pull the old installers and merge the `remote-config` branches.
 
 ## Where we are today
 
@@ -521,7 +521,9 @@ into its repo's `main` when that step is ready.
 2. AxoSync: install keys and proofs in `AccountsClient`; then config fetch, falling back to the
    password dialog when the server can't deliver. Watch the issuance log for failures from real
    participants. *(Released in 0.1.0-alpha.11, 2026-10-26; in use.)*
-3. *(Built in axosync's `remote-config`, 2026-11-01; not yet released.)* A release without embedded configs or `ConfigPasswords`, once **every active participant has
+3. *(Released as AxoSync 0.1.0-alpha.14, 2026-11-03, and checked on macOS and Windows with a MindStone. Still to do: pull the old
+   installers from distribution once the two ms2 participants have their new units and the new build; then merge the `remote-config`
+   branches.)* A release without embedded configs or `ConfigPasswords`, once **every active participant has
    received a config through the server and every unit in use reports a serial** (the two units
    without one are replaced first). Pull the old installers from distribution.
 
