@@ -17,9 +17,9 @@ unless the project's scope actually changes.
 **Status**: data model, EF Core/Identity plumbing, auth, and staff config-assignment are
 implemented — cookie login for the web portal, `POST /api/auth/{login,refresh,logout}` issuing
 JWT + refresh tokens for AxoSync (see "Auth flow" below), and a `/Staff` area for assigning
-configs to accounts (see "Staff area" below). Config delivery's server side is built on the
-`remote-config` branch (see "Config delivery" below and `docs/config-management.md`); AxoSync's side isn't
-yet. Check the files directly if in doubt.
+configs to accounts (see "Staff area" below). Config delivery's server side is in production (merged from the
+`remote-config` branch on 2026-11-03; see "Config delivery" below and `docs/config-management.md`); AxoSync's side is
+released (0.1.0-alpha.11 onwards). Check the files directly if in doubt.
 
 ## Why this is a separate service (not a WordPress plugin)
 
@@ -437,7 +437,7 @@ others keep a byte-identical **copy**, and each side tests itself against it. Th
 | Release signing | `testdata/release-signing-vectors.json` | owner | `scripts/gen-signing-vectors.py`; copy in `axosync` (branch `remote-account` only) |
 | Serial numbers | `testdata/serial-number-vectors.json` | owner | `scripts/gen-serial-vectors.py`; copy in `firmware/quarry/tests/testdata/` |
 | JSON API | `testdata/api-vectors.json` | owner | `scripts/gen-api-vectors.py`; copies in `firmware/quarry/tests/testdata/` and `axosync` (`remote-account` only) |
-| Config delivery | `testdata/config-delivery-vectors.json` | owner | `scripts/gen-config-delivery-vectors.py` (plain-Python crypto, deterministic); copy in `axosync/AxoSync.Tests.Unit/ConfigDelivery/` (AxoSync's `ConfigDeliveryVectorTests` and `ConfigGen selftest`; branch `remote-config`) |
+| Config delivery | `testdata/config-delivery-vectors.json` | owner | `scripts/gen-config-delivery-vectors.py` (plain-Python crypto, deterministic); copy in `axosync/AxoSync.Tests.Unit/ConfigDelivery/` (AxoSync's `ConfigDeliveryVectorTests` and `ConfigGen selftest`) |
 | Firmware images | `testdata/firmware-image-vectors.json` | copy | owner: `firmware/quarry/tests/` |
 | Unit identity | `testdata/identity-vectors.json` | copy | owner: `firmware/testdata/` |
 
