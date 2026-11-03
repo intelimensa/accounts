@@ -254,7 +254,7 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
   stored as `BciDevice.BootloaderVersion` and in the event history; given replaces, omitted leaves it
   unchanged (never cleared; null for MS-V2). Like firmware it's applied at `confirm`/`/firmware`, only
   recorded as *intended* at `reserve`/`rekey`; an app update over USB omits it. `void` is refused if any participant is paired. Region has no server default.
-- **Manual provisioning page** (`/Manufacturing`, `Pages/Manufacturing/`): reserve (batch of up to 50), confirm, void and
+- **Manual provisioning pages** (`/Manufacturing` is a card dashboard; `Reserve`, `Serials`, `Confirm`, `Rekey` and `Units` sub-pages share `ManufacturingPageModel`, `Pages/Manufacturing/`): reserve (batch of up to 50), confirm, void and
   rekey from the browser, for flashing units without Quarry. Gated by the `Manufacturer` role (policy
   `ManufacturerPortal`, cookie auth; Staff can't use it) and re-checks the account is usable per request. It runs the
   same `Manufacturing/UnitProvisioning` service as the API (reserve/confirm/void/rekey logic lives there; the

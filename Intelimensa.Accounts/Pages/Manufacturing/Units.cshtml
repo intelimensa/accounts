@@ -1,0 +1,48 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.UnitsModel
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.Pages.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing: Units";
+}
+
+<h1 class="h3 mb-3">Units</h1>
+<partial name="_Results" model="Model" />
+
+<div class="feature-card">
+    @if (!Model.Units.Any())
+    {
+        <p class="text-muted mb-0">No units reserved yet.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr><th>Serial</th><th>Type</th><th>Status</th><th>Firmware</th><th>Bootloader</th><th></th></tr>
+            </thead>
+            <tbody>
+            @foreach (var unit in Model.Units)
+            {
+                <tr>
+                    <td class="font-monospace">@unit.SerialLabel</td>
+                    <td>@unit.DeviceType.ToUpperInvariant()</td>
+                    <td><span class="badge text-bg-secondary">@(unit.Held ? "Held (no code)" : unit.Status.ToString())</span></td>
+                    <td>@(unit.FirmwareVersion ?? "-")</td>
+                    <td>@(unit.BootloaderVersion ?? "-")</td>
+                    <td class="text-end">
+                        @if (unit.Status == BciDeviceStatus.Reserved)
+                        {
+                            <form method="post" asp-page-handler="Void" class="d-inline">
+                                <input type="hidden" name="serialNumber" value="@unit.SerialLabel" />
+                                <button type="submit" class="btn btn-link btn-sm text-danger">Void</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<p class="mt-3"><a asp-page="/Manufacturing/Index">&larr; Back to manufacturing</a></p>

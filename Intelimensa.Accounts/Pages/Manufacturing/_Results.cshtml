@@ -1,0 +1,74 @@
+@model Intelimensa.Accounts.Pages.Manufacturing.ManufacturingPageModel
+@* Outcome of the last action: messages, held serials, failures and (once only) freshly issued codes. *@
+@if (Model.StatusMessage is not null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+@if (Model.ErrorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+@if (Model.Held.Count > 0)
+{
+    <div class="alert alert-success" role="alert">
+        <strong>Held @Model.Held.Count serial(s):</strong>
+        <pre class="font-monospace mb-0 mt-1">@string.Join("\n", Model.Held)</pre>
+    </div>
+}
+
+@if (Model.Failures.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>Not held:</strong>
+        <ul class="mb-0">
+            @foreach (var failure in Model.Failures)
+            {
+                <li><span class="font-monospace">@failure.Serial</span>: @failure.Reason</li>
+            }
+        </ul>
+    </div>
+}
+
+@if (Model.Issued.Count > 0)
+{
+    <div class="feature-card mb-4 border-warning">
+        <h2 class="h5">@Model.IssuedHeading</h2>
+        <p class="text-danger small mb-2">
+            These registration codes are shown <strong>once</strong>, for writing into the unit when it is
+            flashed. They can't be recovered later; a lost code means a rekey. A code is never printed on
+            the unit or its packaging, so don't keep a copy once the unit is confirmed.
+        </p>
+        <table class="table table-sm align-middle" id="issued-table">
+            <thead><tr><th>Serial</th><th>Registration code</th><th>Type</th></tr></thead>
+            <tbody>
+            @foreach (var row in Model.Issued)
+            {
+                <tr>
+                    <td class="font-monospace">@row.SerialLabel</td>
+                    <td class="font-monospace">@row.CodeLabel</td>
+                    <td>@row.DeviceType.ToUpperInvariant()</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <button type="button" class="btn btn-ia-outline btn-sm" id="download-csv">Download CSV</button>
+        <button type="button" class="btn btn-ia-outline btn-sm" onclick="window.print()">Print</button>
+    </div>
+}
+
+@if (Model.Issued.Count > 0)
+{
+    <script>
+        document.getElementById('download-csv')?.addEventListener('click', () => {
+            const rows = [...document.querySelectorAll('#issued-table tr')]
+                .map(tr => [...tr.children].map(c => '"' + c.textContent.trim().replace(/"/g, '""') + '"').join(','));
+            const blob = new Blob([rows.join('\r\n') + '\r\n'], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'registration-codes.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        });
+    </script>
+}

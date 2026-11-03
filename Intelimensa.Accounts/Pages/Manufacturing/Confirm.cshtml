@@ -1,0 +1,32 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.ConfirmModel
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.Pages.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing: Confirm a flashed unit";
+}
+
+<h1 class="h3 mb-3">Confirm a flashed unit</h1>
+<p class="text-muted">Checks the code read back from the unit and marks it <strong>Manufactured</strong>, so a participant can register it.</p>
+<partial name="_Results" model="Model" />
+
+<div class="feature-card mb-4">
+    <form method="post" class="row g-2">
+        <div class="col-sm-6">
+            <label class="form-label" for="c-serial">Serial</label>
+            <input id="c-serial" name="serialNumber" class="form-control font-monospace" required />
+        </div>
+        <div class="col-sm-6">
+            <label class="form-label" for="c-code">Code read back from the unit</label>
+            <input id="c-code" name="registrationCode" class="form-control font-monospace" required autocomplete="off" />
+        </div>
+        <div class="col-sm-6">
+            <partial name="_BuildSelect" model='new BuildSelectModel("c-fw", "Firmware build", Model.Builds)' />
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-ia-primary">Confirm</button>
+        </div>
+    </form>
+</div>
+
+<p class="mt-3"><a asp-page="/Manufacturing/Index">&larr; Back to manufacturing</a></p>

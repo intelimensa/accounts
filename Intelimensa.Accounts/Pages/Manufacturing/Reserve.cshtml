@@ -1,0 +1,73 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.ReserveModel
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.Pages.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing: Reserve units";
+}
+
+<h1 class="h3 mb-3">Reserve units</h1>
+<partial name="_Results" model="Model" />
+
+<div class="feature-card mb-4">
+    <p class="text-muted small">
+        Issues a new serial <em>and</em> its registration code at once, for a unit you are about to flash
+        whose casing isn't printed yet. For casings printed ahead of time, allocate serials below instead.
+    </p>
+    <form method="post" class="row g-2 align-items-end">
+        <div class="col-sm-2">
+            <label class="form-label" for="r-type">Device type</label>
+            <select id="r-type" name="deviceType" class="form-select">
+                @foreach (var type in Model.DeviceTypes)
+                {
+                    <option value="@type">@type.ToUpperInvariant()</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label" for="r-region">Region</label>
+            <select id="r-region" name="region" class="form-select">
+                @foreach (var region in Model.Regions)
+                {
+                    <option value="@region">@region</option>
+                }
+            </select>
+        </div>
+        <div class="col-sm-2">
+            <partial name="_BuildSelect" model='new BuildSelectModel("r-fw", "Firmware build", Model.Builds)' />
+        </div>
+        <div class="col-sm-2">
+            <label class="form-label" for="r-count">Count</label>
+            <input id="r-count" name="count" type="number" min="1" max="50" value="1" class="form-control" required />
+        </div>
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-ia-primary w-100">Reserve</button>
+        </div>
+    </form>
+</div>
+
+<p class="mt-3"><a asp-page="/Manufacturing/Index">&larr; Back to manufacturing</a></p>
+
+@section Scripts {
+    <script>
+        // The reserve form knows its device type up front, so only offer that product's builds.
+        const typeSelect = document.getElementById('r-type');
+        if (typeSelect) {
+            const filter = () => {
+                for (const select of typeSelect.form.querySelectorAll('select[data-build-select]')) {
+                    let firstVisible = null, selectedHidden = false;
+                    for (const option of select.options) {
+                        const show = option.dataset.type === '' || option.dataset.type === typeSelect.value;
+                        option.hidden = !show;
+                        option.disabled = !show;
+                        if (show && !firstVisible && option.value !== '') firstVisible = option;
+                        if (!show && option.selected) selectedHidden = true;
+                    }
+                    if (selectedHidden) select.value = select.dataset.optional === '1' ? '' : (firstVisible?.value ?? '');
+                }
+            };
+            typeSelect.addEventListener('change', filter);
+            filter();
+        }
+    </script>
+}

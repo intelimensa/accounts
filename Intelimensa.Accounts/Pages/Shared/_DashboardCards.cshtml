@@ -1,0 +1,22 @@
+@model IReadOnlyList<Intelimensa.Accounts.Pages.DashboardCard>
+<div class="row g-4">
+    @foreach (var card in Model)
+    {
+        <div class="col-md-6 col-lg-4">
+            <div class="feature-card d-flex flex-column">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true" class="flex-shrink-0">
+                        <path d="@card.Icon" />
+                    </svg>
+                    <h3 class="mb-0">@card.Title</h3>
+                    @if (card.Badge is not null)
+                    {
+                        <span class="badge text-bg-warning ms-auto">@card.Badge</span>
+                    }
+                </div>
+                <p class="mb-3">@card.Description</p>
+                <a class="btn btn-ia-primary btn-sm mt-auto align-self-start" asp-page="@card.Page">@card.Button &rarr;</a>
+            </div>
+        </div>
+    }
+</div>
