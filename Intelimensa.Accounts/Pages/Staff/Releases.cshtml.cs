@@ -24,6 +24,10 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
 
     public bool SignatureRequired => publisher.SignatureRequired;
 
+    /// <summary>The release whose details stay expanded after an action on one of its files.</summary>
+    [BindProperty(SupportsGet = true)]
+    public int? Open { get; set; }
+
     [BindProperty]
     public CreateInput Input { get; set; } = new();
 
@@ -66,7 +70,7 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
         if (!result.Ok) return await FailAsync(result.Message!);
 
         StatusMessage = $"Uploaded {result.Value!.FileName} for {platform.DisplayName()} ({release.Version}).";
-        return RedirectToPage();
+        return Back(release.Id, open: true);
     }
 
     public async Task<IActionResult> OnPostRemoveArtifactAsync(int artifactId)
@@ -76,7 +80,7 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
         if (!result.Ok) return await FailAsync(result.Message!);
 
         StatusMessage = $"Removed {result.Value!.FileName}.";
-        return RedirectToPage();
+        return Back(result.Value.ReleaseId, open: true);
     }
 
     public async Task<IActionResult> OnPostConfigDeliveryAsync(int artifactId, bool blocked)
@@ -88,7 +92,7 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
         StatusMessage = blocked
             ? $"Config delivery to {result.Value!.Release!.Version} ({result.Value.Platform.DisplayName()}) is blocked."
             : $"Config delivery to {result.Value!.Release!.Version} ({result.Value.Platform.DisplayName()}) is allowed again.";
-        return RedirectToPage();
+        return Back(result.Value.ReleaseId, open: true);
     }
 
     public async Task<IActionResult> OnPostSetStatusAsync(int releaseId, ReleaseStatus status)
@@ -98,8 +102,12 @@ public class ReleasesModel(ApplicationDbContext db, ReleasePublisher publisher) 
         if (!result.Ok) return await FailAsync(result.Message!);
 
         StatusMessage = $"Release {result.Value!.Version} is now {status}.";
-        return RedirectToPage();
+        return Back(result.Value.Id, open: false);
     }
+
+    /// <summary>Back to the list, scrolled to the release that was acted on, so a long list isn't scrolled through again.</summary>
+    private IActionResult Back(int releaseId, bool open) =>
+        RedirectToPage(null, null, open ? new { open = releaseId } : null, $"release-{releaseId}");
 
     private async Task<IActionResult> FailAsync(string message)
     {

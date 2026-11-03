@@ -49,8 +49,8 @@
     @foreach (var release in Model.Releases)
     {
         var isDraft = release.Status == ReleaseStatus.Draft;
-        <div class="feature-card">
-            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+        <div class="feature-card" id="release-@release.Id" style="scroll-margin-top: 1rem;">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
                 <div>
                     <h2 class="h5 mb-0">v@(release.Version) <span class="badge text-bg-secondary ms-1">@release.Status</span>
                         @if (release.FilesPurgedAt is { } purgedAt)
@@ -84,6 +84,14 @@
                 </form>
             </div>
 
+            @{
+                var artifactCount = release.Artifacts.Count;
+                var summaryText = release.FilesPurgedAt is not null
+                    ? "Files purged"
+                    : $"Platforms and signatures ({artifactCount} of {Enum.GetValues<ReleasePlatform>().Length} uploaded)";
+            }
+            <details class="mt-2" open="@(isDraft || Model.Open == release.Id)">
+                <summary class="small text-muted" style="cursor: pointer;">@summaryText</summary>
             @if (release.FilesPurgedAt is not null)
             {
                 <div class="border-top py-2 small text-muted">The installers were purged on @release.FilesPurgedAt.Value.ToString("yyyy-MM-dd") to free disk space.</div>
@@ -156,6 +164,7 @@
                     }
                 </div>
             }
+            </details>
         </div>
     }
 </div>
