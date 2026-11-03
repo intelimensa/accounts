@@ -37,7 +37,7 @@ Everything below is committed and nothing is pushed: `accounts` and `axosync` on
   `string.Concat`). The methods are rewritten for the VM and pass `tools/vmprobe/run.sh` (the real sources, protected with the release
   settings incl. NecroBit, against .NET's crypto and NIST vectors). Cost: about 1.7 s to open a 20 KB config (the VM is ~1000x slower).
   **Tried 2026-11-03:** an obfuscated macOS release build against a test server, with a MindStone: registered, `ms5` delivered and opened
-  in 1.97 s, streamed with 0 samples missing. The Windows probe passes too (`run.ps1`; 20 KB in 2.9 s there). **Not yet tried:** a full obfuscated Windows build with a unit. A virtualized method's arguments are still
+  in 1.97 s, streamed with 0 samples missing. The Windows probe passes too (`run.ps1`; 20 KB in 2.9 s there). Released as AxoSync 0.1.0-alpha.15 (2026-11-03) and hand-tested on macOS and Windows with a unit. A virtualized method's arguments are still
   visible at its boundary (section 2's "can't be hooked" holds for what happens inside a method). Details:
   axosync `notes/reactor-virtualization-pitfalls.md`.
 - The two migrations were rehearsed on a copy of the dev database seeded with 17 units: unit identities, pairings and
