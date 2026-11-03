@@ -32,10 +32,14 @@ Everything below is committed and nothing is pushed: `accounts` and `axosync` on
   `release.ps1` used an API Windows PowerShell 5.1 lacks; the unit probe let one COM port's `ArgumentOutOfRangeException` end the
   whole scan. `publish.ps1` then published a further build (0.1.0-alpha.10.20) from the PC, signed with the YubiKey: secret stored on the server,
   local copy deleted.
-- **Reactor virtualization of the config crypto is deferred.** It was tried: with the attribute, Reactor virtualized every method
-  that handles key material (checked on a mapping-file run with NecroBit off), but its VM threw `NotSupportedException` when the
-  obfuscated build opened a config (most likely the span-based code). The methods need rewriting for the VM in a later update;
-  until then they get Reactor's general protection (NecroBit, control flow, renaming). Notes on `ProtectedCrypto` in axosync.
+- **Reactor virtualization of the config crypto** (2026-11-01): the 2026-10-26 failure was the VM not running ref structs (spans,
+  `stackalloc`, interpolated strings) plus three VM bugs (compound assignment on `uint[]`/`ulong[]` elements, `ulong[]` access, six-operand
+  `string.Concat`). The methods are rewritten for the VM and pass `tools/vmprobe/run.sh` (the real sources, protected with the release
+  settings incl. NecroBit, against .NET's crypto and NIST vectors). Cost: about 1.7 s to open a 20 KB config (the VM is ~1000x slower).
+  **Tried 2026-11-03:** an obfuscated macOS release build against a test server, with a MindStone: registered, `ms5` delivered and opened
+  in 1.97 s, streamed with 0 samples missing. **Not yet tried:** Windows. A virtualized method's arguments are still
+  visible at its boundary (section 2's "can't be hooked" holds for what happens inside a method). Details:
+  axosync `notes/reactor-virtualization-pitfalls.md`.
 - The two migrations were rehearsed on a copy of the dev database seeded with 17 units: unit identities, pairings and
   assignments came out byte-identical.
 
@@ -729,6 +733,6 @@ AxoSync's side is on axosync's `remote-config` branch (`AxoSync/ConfigDelivery/`
   build started without `--connect` still auto-launches the config remembered in its preferences; with `--connect` it uses the server.
   `biosemi` stays lab-only (Debug, never published) and `ms2` is discontinued.
 - **Keys are files for now** (DPAPI on Windows, 0600 elsewhere), like the refresh token; hardware stores (TPM, Secure Enclave) later.
-- **Untested so far:** the PowerShell release and publish scripts (no PowerShell 7 on the Mac it was built on), a release build's
-  Reactor virtualization of the crypto methods, and the dialogs with real hardware.
+- **Untested so far:** the PowerShell release and publish scripts (no PowerShell 7 on the Mac it was built on), a full release build's
+  virtualized crypto (the probe passes; see "Current state"), and the dialogs with real hardware.
 
