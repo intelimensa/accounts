@@ -67,6 +67,17 @@ body {
   color: var(--ia-heading) !important;
 }
 
+.site-header .nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.site-header .nav-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
 .site-header .nav-link:hover {
   color: var(--ia-accent) !important;
 }
