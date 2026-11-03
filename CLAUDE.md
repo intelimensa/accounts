@@ -164,7 +164,7 @@ not the model class — `CS0118`).
 
 ## Staff area
 
-Implemented — `Pages/Staff/Index.cshtml` (assign a config / set status / set expiry per account,
+Implemented — `Pages/Staff/Index.cshtml` is a card dashboard linking to each staff page; `Pages/Staff/Accounts.cshtml` ("Account status": set status / expiry / limits per account,
 one combined form per row) and `Pages/Staff/Configs.cshtml` (create/list `Config` rows). Gated by
 a `"Staff"` ASP.NET Core Identity role and a matching `"Staff"` authorization policy
 (`RequireRole("Staff")`), applied to the whole folder via
@@ -175,7 +175,7 @@ is seeded idempotently on every startup (`RoleManager.RoleExistsAsync`/`CreateAs
 **Sign-up needs approval.** `Register` creates the account `Pending` (`AccountStatus.Pending = 2`, stored as an integer, so
 no migration was needed and existing accounts stayed Active). `AccountPolicy.IsUsable` passes only `Active`, so a pending
 account can't use `/Download`, the API login or anything else gated on it, and `Account/Status` says it is awaiting approval.
-Staff approve on `/Staff` (pending accounts are listed first with an **Approve** button that also takes an optional expiry).
+Staff approve on `/Staff/Accounts` (pending accounts are listed first with an **Approve** button that also takes an optional expiry).
 **Email confirmation.** `Register` emails a confirmation link (`Email/EmailConfirmation.cs`; Identity token, 3-day lifespan, link
 to `/Account/ConfirmEmail`); `Account/Status` shows the state and a rate-limited resend (one per 2 minutes per user). An
 unconfirmed user may still sign in to the web portal (to resend) but is Pending, and staff can't set an account Active

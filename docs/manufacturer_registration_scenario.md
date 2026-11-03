@@ -103,7 +103,7 @@ manufacturing flow for real units.
    WHERE u.Email = 'station-01@example.com' AND r.Name = 'Manufacturer';
    ```
 
-2. Revoking a station: set its account to revoked in `/Staff`. Manufacturing calls re-check the
+2. Revoking a station: set its account to revoked in `/Staff/Accounts`. Manufacturing calls re-check the
    account on every request, so it takes effect immediately.
 3. Product codes (4 characters, e.g. `MSV2`) come from `Manufacturing:ProductCodes` and the allowed
    region/variant characters from `Manufacturing:RegionCodes`, both in `appsettings.json` (currently
