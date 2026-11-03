@@ -352,7 +352,7 @@ touching any of this.
 - **Publishing**: the `Publisher` role (JWT, seeded at startup, granted by `scripts/setrole.sh` like
   Staff/Manufacturer) drives `/api/publishing/...`: draft, upload artifact + signature, publish /
   withdraw. The staff page `/Staff/Releases` does the same by hand. Published releases are immutable
-  (a fix is a new version); a published release can be withdrawn but not returned to draft.
+  (a fix is a new version); a published release can be withdrawn but not returned to draft. A **withdrawn** release's files can be **purged** (`/Staff/PurgeRelease`, type the version to confirm; `ReleasePublisher.PurgeFilesAsync`): the installers and artifact rows are deleted for good (signatures and release secrets with them), the `Release` row stays with `FilesPurgedAt` set and its version stays taken. Withdrawing alone frees no space. The release API has no purge.
 - **Update check** (`Api/Updates/`, any usable account, JWT): `GET /api/releases/latest?platform=&current=`
   returns the highest published SemVer with a build for that platform (pre-releases only on request),
   plus `mandatory` when `current` is below that release's `MinimumVersion`; `GET /api/releases/{version}/{platform}/file`

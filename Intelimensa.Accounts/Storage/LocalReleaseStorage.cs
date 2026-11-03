@@ -69,6 +69,15 @@ public class LocalReleaseStorage : IReleaseStorage
     {
         var path = ResolvePath(storageKey);
         if (File.Exists(path)) File.Delete(path);
+
+        // Leave no empty {version}/{platform} folders behind (the root itself stays).
+        for (var dir = Path.GetDirectoryName(path);
+             dir is not null && dir.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                && Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any();
+             dir = Path.GetDirectoryName(dir))
+        {
+            Directory.Delete(dir);
+        }
     }
 
     // Defense in depth: keys are built from validated inputs, but never trust that a key stays

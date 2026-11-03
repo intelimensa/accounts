@@ -79,6 +79,31 @@ else
     </table>
 }
 
+@if (Model.ReleaseSizes.Count > 0)
+{
+    <h2 class="h5 mt-4">AxoSync releases by version</h2>
+    <p class="small text-muted">
+        Withdrawn releases can be purged on <a asp-page="/Staff/Releases">Staff &rarr; Releases</a> to free their space.
+        A folder with no release is leftover storage that nothing refers to.
+    </p>
+    <table class="table table-sm align-middle">
+        <thead><tr><th>Version</th><th>Status</th><th class="text-end">Size</th></tr></thead>
+        <tbody>
+        @foreach (var r in Model.ReleaseSizes)
+        {
+            <tr>
+                <td class="font-monospace">v@(r.Version)</td>
+                <td>
+                    @if (r.Status is null) { <span class="badge text-bg-warning">not in database</span> }
+                    else { <span class="badge text-bg-secondary">@r.Status</span> }
+                </td>
+                <td class="text-end">@ByteSize.Format(r.Bytes)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
 <h2 class="h5 mt-4">Configuration</h2>
 <table class="table table-sm">
     <tbody>

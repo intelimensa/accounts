@@ -52,7 +52,12 @@
         <div class="feature-card">
             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
                 <div>
-                    <h2 class="h5 mb-0">v@(release.Version) <span class="badge text-bg-secondary ms-1">@release.Status</span></h2>
+                    <h2 class="h5 mb-0">v@(release.Version) <span class="badge text-bg-secondary ms-1">@release.Status</span>
+                        @if (release.FilesPurgedAt is { } purgedAt)
+                        {
+                            <span class="badge text-bg-dark ms-1" title="Purged @purgedAt.ToString("yyyy-MM-dd")">files purged</span>
+                        }
+                    </h2>
                     @if (release.MinimumVersion is not null)
                     {
                         <div class="small">Clients older than <strong>@release.MinimumVersion</strong> must update.</div>
@@ -72,10 +77,18 @@
                     {
                         <button type="submit" name="status" value="@ReleaseStatus.Withdrawn" class="btn btn-ia-outline btn-sm">Withdraw</button>
                     }
+                    @if (release.Status == ReleaseStatus.Withdrawn && release.Artifacts.Count > 0)
+                    {
+                        <a asp-page="/Staff/PurgeRelease" asp-route-releaseId="@release.Id" class="btn btn-outline-danger btn-sm">Purge files&hellip;</a>
+                    }
                 </form>
             </div>
 
-            @foreach (var platform in Enum.GetValues<ReleasePlatform>())
+            @if (release.FilesPurgedAt is not null)
+            {
+                <div class="border-top py-2 small text-muted">The installers were purged on @release.FilesPurgedAt.Value.ToString("yyyy-MM-dd") to free disk space.</div>
+            }
+            else foreach (var platform in Enum.GetValues<ReleasePlatform>())
             {
                 var artifact = release.Artifacts.FirstOrDefault(a => a.Platform == platform);
                 <div class="border-top py-2 d-flex flex-wrap align-items-center gap-2">

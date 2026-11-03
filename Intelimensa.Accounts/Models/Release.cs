@@ -27,6 +27,12 @@ public class Release
     /// <summary>Set when the release first goes <see cref="ReleaseStatus.Published"/>.</summary>
     public DateTimeOffset? PublishedAt { get; set; }
 
+    /// <summary>
+    /// Set when staff purged a withdrawn release's installers from the server to free space. The release row
+    /// stays (its version can't be reused, and it is history); its artifacts and files are gone for good.
+    /// </summary>
+    public DateTimeOffset? FilesPurgedAt { get; set; }
+
     public List<ReleaseArtifact> Artifacts { get; set; } = [];
 }
 

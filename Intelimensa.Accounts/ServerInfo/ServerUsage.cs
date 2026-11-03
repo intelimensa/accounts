@@ -55,6 +55,15 @@ public class ServerUsageService(
         return Summarize(disk, items);
     }
 
+    /// <summary>Size on disk of each top-level folder of the release storage, which is one per version.</summary>
+    public IReadOnlyDictionary<string, long> ReleaseFolderSizes()
+    {
+        var root = Full(releases.Value.StoragePath);
+        return Directory.Exists(root)
+            ? Directory.EnumerateDirectories(root).ToDictionary(d => Path.GetFileName(d), TreeBytes)
+            : new Dictionary<string, long>();
+    }
+
     /// <summary>Used space not accounted for by the items that live on the same volume.</summary>
     public static ServerUsage Summarize(DiskInfo? disk, IReadOnlyList<StorageItem> items)
     {

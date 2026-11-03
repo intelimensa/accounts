@@ -233,6 +233,35 @@ public partial class ReleasePublisher(
     }
 
     /// <summary>
+    /// Deletes a <b>withdrawn</b> release's installers and artifact rows to free disk space; the release row stays,
+    /// marked <see cref="Release.FilesPurgedAt"/>. Irreversible: the signatures and release secrets go with the rows,
+    /// so the build can no longer be restored or receive configs. Returns the bytes freed.
+    /// </summary>
+    public async Task<PublishResult<long>> PurgeFilesAsync(int releaseId)
+    {
+        var release = await db.Releases.Include(r => r.Artifacts).FirstOrDefaultAsync(r => r.Id == releaseId);
+        if (release is null)
+            return Fail<long>(PublishError.NotFound, "No such release.");
+        if (release.Status != ReleaseStatus.Withdrawn)
+            return Fail<long>(PublishError.Conflict, "Only a withdrawn release can be purged. Withdraw it first.");
+        if (release.Artifacts.Count == 0)
+            return Fail<long>(PublishError.Conflict, $"Release {release.Version} has no files left.");
+
+        var freed = release.Artifacts.Sum(a => a.SizeBytes);
+        // Rows first, files second: if the commit fails nothing is lost, and a failed delete only leaves an
+        // orphan file (which the Server page shows) and never a row that points at nothing.
+        var keys = release.Artifacts.Select(a => a.StorageKey).ToList();
+        db.ReleaseArtifacts.RemoveRange(release.Artifacts);
+        release.FilesPurgedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+        foreach (var key in keys)
+            storage.Delete(key);
+
+        logger.LogWarning("Purged {Count} file(s) of withdrawn release {Version} ({Bytes} bytes)", keys.Count, release.Version, freed);
+        return Ok(freed);
+    }
+
+    /// <summary>
     /// Stops (or resumes) delivering config keys to one build, whatever the release's status: for a build that is
     /// too old or whose release secret is suspected leaked. Its participants are told to update.
     /// </summary>

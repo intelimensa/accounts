@@ -533,6 +533,9 @@ namespace Intelimensa.Accounts.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("FilesPurgedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MinimumVersion")
                         .HasColumnType("TEXT");
 
