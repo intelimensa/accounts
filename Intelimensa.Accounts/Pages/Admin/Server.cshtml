@@ -1,0 +1,92 @@
+@page
+@model Intelimensa.Accounts.Pages.Admin.ServerModel
+@using Intelimensa.Accounts.ServerInfo
+@using Intelimensa.Accounts.Pages.Admin
+@{
+    ViewData["Title"] = "Admin: Server";
+    var usage = Model.Usage;
+    var disk = usage.Disk;
+    string Pct(long bytes) => disk is { TotalBytes: > 0 } ? $"{bytes * 100.0 / disk.TotalBytes:0.#}%" : "";
+    double Width(long bytes) => disk is { TotalBytes: > 0 } ? Math.Round(bytes * 100.0 / disk.TotalBytes, 2) : 0;
+    var onDisk = usage.Items.Where(i => i.OnDisk).ToList();
+    var free = disk is null ? 0 : disk.TotalBytes - disk.UsedBytes;
+}
+
+<h1 class="h3 mb-3">Server</h1>
+
+<h2 class="h5">Storage</h2>
+@if (disk is null)
+{
+    <div class="alert alert-warning" role="alert">The disk holding the database couldn't be read.</div>
+}
+else
+{
+    @if (disk.AvailableBytes * 10 < disk.TotalBytes)
+    {
+        <div class="alert alert-danger" role="alert">Less than 10% of the disk is available (@ByteSize.Format(disk.AvailableBytes)).</div>
+    }
+    <p>
+        <strong>@ByteSize.Format(disk.UsedBytes)</strong> used of <strong>@ByteSize.Format(disk.TotalBytes)</strong>
+        on <code>@disk.MountPoint</code> &middot; <strong>@ByteSize.Format(disk.AvailableBytes)</strong> available.
+    </p>
+
+    <div class="progress mb-3" style="height: 1.5rem;" role="img" aria-label="Disk usage by category">
+        @for (var i = 0; i < onDisk.Count; i++)
+        {
+            <div class="progress-bar bg-@ServerModel.Colors[usage.Items.ToList().IndexOf(onDisk[i]) % ServerModel.Colors.Length]"
+                 style="width: @(Width(onDisk[i].Bytes).ToString(System.Globalization.CultureInfo.InvariantCulture))%"
+                 title="@onDisk[i].Label: @ByteSize.Format(onDisk[i].Bytes)"></div>
+        }
+        <div class="progress-bar bg-secondary" style="width: @(Width(usage.OtherBytes).ToString(System.Globalization.CultureInfo.InvariantCulture))%; opacity: .55"
+             title="OS and everything else: @ByteSize.Format(usage.OtherBytes)"></div>
+    </div>
+
+    <table class="table table-sm align-middle">
+        <thead><tr><th></th><th>What</th><th class="text-end">Size</th><th class="text-end">Of disk</th><th>Where</th></tr></thead>
+        <tbody>
+        @for (var i = 0; i < usage.Items.Count; i++)
+        {
+            var item = usage.Items[i];
+            <tr>
+                <td><span class="badge bg-@ServerModel.Colors[i % ServerModel.Colors.Length]">&nbsp;</span></td>
+                <td>
+                    @item.Label
+                    <div class="small text-muted">@item.Description</div>
+                </td>
+                <td class="text-end">@(item.Exists ? ByteSize.Format(item.Bytes) : "not found")</td>
+                <td class="text-end">@(item.OnDisk ? Pct(item.Bytes) : "other volume")</td>
+                <td class="font-monospace small">@item.Path</td>
+            </tr>
+        }
+        <tr>
+            <td><span class="badge bg-secondary" style="opacity: .55">&nbsp;</span></td>
+            <td>
+                Operating system and everything else
+                <div class="small text-muted">Used space the app can't attribute: OS, packages, logs, caches, other sites.</div>
+            </td>
+            <td class="text-end">@ByteSize.Format(usage.OtherBytes)</td>
+            <td class="text-end">@Pct(usage.OtherBytes)</td>
+            <td></td>
+        </tr>
+        <tr class="table-light">
+            <td></td>
+            <td><strong>Free</strong></td>
+            <td class="text-end"><strong>@ByteSize.Format(free)</strong></td>
+            <td class="text-end">@Pct(free)</td>
+            <td class="small text-muted">@ByteSize.Format(disk.AvailableBytes) available to the app (the rest is reserved by the filesystem)</td>
+        </tr>
+        </tbody>
+    </table>
+}
+
+<h2 class="h5 mt-4">Configuration</h2>
+<table class="table table-sm">
+    <tbody>
+    @foreach (var (label, value) in Model.System)
+    {
+        <tr><th scope="row" class="fw-normal text-muted" style="width: 14rem;">@label</th><td>@value</td></tr>
+    }
+    </tbody>
+</table>
+
+<p class="mt-3"><a asp-page="/Admin/Index">&larr; Back to admin</a></p>

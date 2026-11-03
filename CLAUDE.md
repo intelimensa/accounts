@@ -197,7 +197,7 @@ here). Every change mails the user, and the stamp update ends other web sessions
 There is deliberately no `Participant` role: roles are baked into the cookie/JWT, `Status`/`ExpiresAt` are read per request.
 
 **Roles and the Administrator.** `Administrator` (policy `Administrator`, folder `/Admin`, seeded at startup) is the only role
-that grants or revokes `Staff`, `Manufacturer` and `Publisher`, at `/Admin/Roles` (`/Admin` is a card dashboard). It can't change its own roles, and the UI
+that grants or revokes `Staff`, `Manufacturer` and `Publisher`, at `/Admin/Roles` (`/Admin` is a card dashboard). `/Admin/Server` (`ServerInfo/ServerUsage.cs`) shows the data volume's size and what takes it (database, backups, releases, firmware, config files, app and `app.prev`; the rest is "OS and everything else", by subtraction) plus non-secret configuration. Backups are looked for in `ServerInfo:BackupsPath`, default `../backups` beside the database's folder (the VPS layout). It can't change its own roles, and the UI
 can't grant `Administrator` itself: that stays `scripts/setrole.sh --role Administrator`. Administrator doesn't imply Staff.
 A role change updates the user's security stamp, and `Security/SecurityStampCheck` (cookie `OnValidatePrincipal`, on every
 request) ends that user's web session at once; a JWT already issued keeps its roles until it expires (15 min). The stock

@@ -44,6 +44,7 @@ builder.Services.Configure<ReleasePublishingOptions>(builder.Configuration.GetSe
 builder.Services.AddScoped<ReleasePublisher>();
 builder.Services.Configure<FirmwareStorageOptions>(builder.Configuration.GetSection("Firmware"));
 builder.Services.AddSingleton<IFirmwareStorage, LocalFirmwareStorage>();
+builder.Services.AddSingleton<Intelimensa.Accounts.ServerInfo.ServerUsageService>();
 
 // Config delivery (docs/config-management.md). Without Configs:KeyEncryptionKey and Configs:LeaseSigningKey the
 // server runs as before and the config endpoints answer 503; that is the feature's switch.
