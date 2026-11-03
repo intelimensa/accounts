@@ -283,6 +283,8 @@ cmd_deploy() {
   work_out_migrations
 
   echo "Publishing..."
+  # A stale shared compiler server sometimes mangles the Razor output (docs/razor-flake/REPORT.md), so start from fresh ones.
+  dotnet build-server shutdown >/dev/null 2>&1 || true
   (cd "$PROJECT_DIR" && dotnet publish -c Release -o "$WORK/publish" -v q --nologo 2>&1 | tail -3) || die "publish failed."
   [ -f "$WORK/publish/Intelimensa.Accounts.dll" ] || die "publish output not found."
   # An old ./publish folder in the project gets swept into the output as content; it isn't part of the app.
