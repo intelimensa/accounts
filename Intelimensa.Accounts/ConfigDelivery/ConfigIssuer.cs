@@ -75,6 +75,7 @@ public class ConfigIssuer(
             var lease = new LeaseTerms(account.Id, install.Id, bciDevice!.SerialNumber, config.Key, config.BlobSha256!, issuedAt, notAfter);
             var signature = OfflineLease.Sign(keys.LeaseKey, lease);
 
+            install.RecordVersion(version); // saved below; the build that got a key is the one running
             db.ConfigKeyIssuances.Add(new ConfigKeyIssuance
             {
                 AccountId = account.Id,

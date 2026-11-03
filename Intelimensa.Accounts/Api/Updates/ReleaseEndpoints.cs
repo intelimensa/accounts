@@ -51,11 +51,16 @@ public static class ReleaseEndpoints
         ReleasePlatform? platform,
         string? current,
         bool? includePrerelease,
+        HttpContext http,
         ClaimsPrincipal user,
         ApplicationDbContext db,
         ReleasePublisher publisher)
     {
         if (!await IsUsableAsync(user, db)) return Results.Unauthorized();
+
+        // The update check is the one call every build makes after an update, so it keeps the account page's version current.
+        if (http.GetClientInstall() is { } install && install.RecordVersion(current))
+            await db.SaveChangesAsync();
         if (platform is null || !Enum.IsDefined(platform.Value))
             return Results.BadRequest(new { error = "platform is required (WindowsX64, MacOSArm64, MacOSX64, LinuxX64)." });
 

@@ -93,7 +93,7 @@ the build settled. Read it before changing any of this. The server side, in shor
 - **Client installs** (`Security/ClientInstallRegistry.cs`): AxoSync registers its two P-256 public keys at
   password login (`install` in the login body). At most `Configs:MaxInstallsPerAccount` (6) active installs per
   account (staff override per account), idle ones revoked after `Configs:InstallIdleDays`, the participant emailed
-  for each new one and able to remove it on My Account. Tokens from that login are bound to the install.
+  for each new one and able to remove it on My Account. Tokens from that login are bound to the install. `ClientInstall.AppVersion` is set at that login and then refreshed from `current` on every update check and `version` on every config delivery (`RecordVersion`), because an updated app keeps running on its refresh token.
 - **Install proofs** (`Security/InstallProof.cs`, `InstallNonces.cs`, `InstallProofMiddleware.cs`): every request on a
   bound token is signed by the install over method, path, body hash and a server-issued nonce. Logins without an
   install (Quarry, publish scripts) still work and get unbound tokens, which can't fetch configs.
@@ -186,6 +186,14 @@ needs no second check. The migration `ConfirmExistingEmails` marked every pre-ex
 production warns at startup). Links use `App:PublicBaseUrl` (set in `appsettings.Production.json`; behind nginx the request
 says `http`). Send through the cPanel host's SMTP, not from the VPS (SPF doesn't list the VPS). `Email:Password` is a secret:
 user-secrets locally, `Email__Password` in the systemd unit.
+**Password and email changes** (`Pages/Account/`, mail in `Email/AccountMail.cs`). *Forgot password* (`ForgotPassword`, `ResetPassword`,
+anonymous): the answer is identical whether or not the address has an account; one mail per user per 2 minutes; the link lives 1 hour
+(`PasswordResetTokenProvider`, its own Identity token provider, so confirmation and reset tokens aren't interchangeable) and dies with the
+next password change (security stamp). A reset also confirms the address, clears lockout and revokes every refresh token. *Change password*
+(`ChangePassword`, needs the current password) also revokes refresh tokens (AxoSync/Quarry sign in again), keeps the current web session.
+*Change email* (`ChangeEmail` then `ConfirmEmailChange`): needs the current password, the link goes to the **new** address, nothing changes until
+it is opened, a taken address gets no mail but the same answer, and the old address is notified. `UserName` follows `Email` (they are the same
+here). Every change mails the user, and the stamp update ends other web sessions via `SecurityStampCheck`; a JWT already issued lives out its 15 minutes.
 There is deliberately no `Participant` role: roles are baked into the cookie/JWT, `Status`/`ExpiresAt` are read per request.
 
 **Roles and the Administrator.** `Administrator` (policy `Administrator`, folder `/Admin`, seeded at startup) is the only role
