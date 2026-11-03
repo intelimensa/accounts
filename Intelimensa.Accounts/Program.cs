@@ -29,6 +29,9 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Account/Login");
     options.Conventions.AllowAnonymousToPage("/Account/Register");
     options.Conventions.AllowAnonymousToPage("/Account/ConfirmEmail");
+    options.Conventions.AllowAnonymousToPage("/Account/ForgotPassword");
+    options.Conventions.AllowAnonymousToPage("/Account/ResetPassword");
+    options.Conventions.AllowAnonymousToPage("/Account/ConfirmEmailChange");
     options.Conventions.AuthorizeFolder("/Admin", "Administrator");
     options.Conventions.AuthorizeFolder("/Staff", "Staff");
     options.Conventions.AuthorizeFolder("/Manufacturing", "ManufacturerPortal");
@@ -75,6 +78,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
 
         options.User.RequireUniqueEmail = true;
 
+        // Reset links get their own, short-lived provider (see PasswordResetTokenProvider).
+        options.Tokens.PasswordResetTokenProvider = PasswordResetTokenOptions.ProviderName;
+
         // Not RequireConfirmedAccount: an unconfirmed user must still be able to sign in to the web
         // portal to ask for another confirmation email. They are Pending until staff approve, and
         // staff can only approve a confirmed address, so this never opens API/download access.
@@ -83,7 +89,8 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
-    .AddDefaultTokenProviders(); // AddIdentityCore doesn't: the email-confirmation token needs one
+    .AddDefaultTokenProviders() // AddIdentityCore doesn't: the email-confirmation token needs one
+    .AddTokenProvider<PasswordResetTokenProvider>(PasswordResetTokenOptions.ProviderName);
 builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = TimeSpan.FromDays(3));
 
 builder.Services.AddOptions<EmailOptions>()
@@ -97,6 +104,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Email:Host"]))
 else
     builder.Services.AddSingleton<IMailSender, LoggingMailSender>();
 builder.Services.AddScoped<EmailConfirmation>();
+builder.Services.AddScoped<AccountMail>();
 builder.Services.AddScoped<AccountAccess>();
 builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2idPasswordHasher>();
 builder.Services.AddScoped<TokenService>();

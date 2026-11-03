@@ -31,7 +31,11 @@
             }
             <dl class="row mb-0">
                 <dt class="col-sm-4">Email</dt>
-                <dd class="col-sm-8">@Model.Email</dd>
+                <dd class="col-sm-8">@Model.Email
+                    <span class="ms-2 small"><a asp-page="/Account/ChangeEmail">Change</a></span></dd>
+
+                <dt class="col-sm-4">Password</dt>
+                <dd class="col-sm-8"><a asp-page="/Account/ChangePassword">Change password</a></dd>
 
                 <dt class="col-sm-4">Status</dt>
                 <dd class="col-sm-8">@(Model.Account?.Status.ToString() ?? "Unknown")</dd>

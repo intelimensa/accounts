@@ -1,0 +1,26 @@
+@page
+@model Intelimensa.Accounts.Pages.Account.ConfirmEmailChangeModel
+@{
+    ViewData["Title"] = "Confirm new email";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="feature-card mt-4">
+            <h1 class="h3 mb-3">Confirm new email</h1>
+            @if (Model.Changed)
+            {
+                <p>Your email address is now <strong>@Model.NewEmail</strong>. Sign in with it from now on. AxoSync
+                   installs are signed out and ask you to sign in again.</p>
+                <a asp-page="/Account/Login" class="btn btn-ia-primary">Sign in</a>
+            }
+            else
+            {
+                <div class="alert alert-warning" role="alert">
+                    This link is invalid, has expired, or the address can't be used. Sign in and start again from
+                    <a asp-page="/Account/Status">My Account</a>.
+                </div>
+            }
+        </div>
+    </div>
+</div>
