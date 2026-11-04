@@ -1,6 +1,6 @@
 {
   "contract": "intelimensa-accounts-api-v1",
-  "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check, device registration, config delivery and config publishing). Owner: accounts repo (testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the wire. The server must read every `request` into its record and write every `response` back out identically (nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read every `response`. Update-check examples carry a `context` (the client's platform, version and trusted key) and the `expect`ed result of AxoSync's check. `tolerated`: JSON a client must still read. `errors`: bodies a client may meet. `rekeyReasons`: the reasons a station may send; anything else is refused.",
+  "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check, device registration, config delivery, config publishing and preference slots). Owner: accounts repo (testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the wire. The server must read every `request` into its record and write every `response` back out identically (nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read every `response`. Update-check examples carry a `context` (the client's platform, version and trusted key) and the `expect`ed result of AxoSync's check. `tolerated`: JSON a client must still read. `errors`: bodies a client may meet. `rekeyReasons`: the reasons a station may send; anything else is refused.",
   "rekeyReasons": [
     "Reflash",
     "Rework"
@@ -371,6 +371,136 @@
       }
     },
     {
+      "name": "preference-slots-response",
+      "type": "PreferenceSlotListResponse",
+      "direction": "response",
+      "note": "always five entries, no payloads; a slot that was never written is empty at version 0 and carries its default name",
+      "json": {
+        "slots": [
+          {
+            "slot": 1,
+            "name": "Morning",
+            "version": 3,
+            "updatedAt": "2026-11-05T09:00:00+00:00",
+            "empty": false
+          },
+          {
+            "slot": 2,
+            "name": "Profile 2",
+            "version": 0,
+            "updatedAt": null,
+            "empty": true
+          },
+          {
+            "slot": 3,
+            "name": "Profile 3",
+            "version": 0,
+            "updatedAt": null,
+            "empty": true
+          },
+          {
+            "slot": 4,
+            "name": "Profile 4",
+            "version": 0,
+            "updatedAt": null,
+            "empty": true
+          },
+          {
+            "slot": 5,
+            "name": "Profile 5",
+            "version": 0,
+            "updatedAt": null,
+            "empty": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "preference-slot-response",
+      "type": "PreferenceSlotResponse",
+      "direction": "response",
+      "note": "also the ETag header (\"3\"); a sparse map: a key that is absent means the loaded config's default",
+      "json": {
+        "slot": 1,
+        "name": "Morning",
+        "version": 3,
+        "updatedAt": "2026-11-05T09:00:00+00:00",
+        "payload": {
+          "v": 1,
+          "values": {
+            "KeybindLeft": "A",
+            "MouseSensitivityX": "0.4",
+            "TrackBallGameSensitivity": "0.35"
+          }
+        }
+      }
+    },
+    {
+      "name": "preference-slot-response-empty",
+      "type": "PreferenceSlotResponse",
+      "direction": "response",
+      "note": "a slot that was never written: GET answers 200 with version 0 (ETag \"0\")",
+      "json": {
+        "slot": 2,
+        "name": "Profile 2",
+        "version": 0,
+        "updatedAt": null,
+        "payload": {
+          "v": 1,
+          "values": {}
+        }
+      }
+    },
+    {
+      "name": "put-preference-slot-request",
+      "type": "PutPreferenceSlotRequest",
+      "direction": "request",
+      "note": "PUT /api/preferences/{slot} replaces name and payload; If-Match is required (\"0\" creates, otherwise the version read last)",
+      "json": {
+        "name": "Morning",
+        "payload": {
+          "v": 1,
+          "values": {
+            "KeybindLeft": "A",
+            "MouseSensitivityX": "0.4",
+            "TrackBallGameSensitivity": "0.35"
+          }
+        }
+      }
+    },
+    {
+      "name": "rename-preference-slot-request",
+      "type": "RenamePreferenceSlotRequest",
+      "direction": "request",
+      "note": "PATCH /api/preferences/{slot}/name; If-Match is required as for PUT",
+      "json": {
+        "name": "Evening"
+      }
+    },
+    {
+      "name": "preference-slot-conflict-response",
+      "type": "PreferenceSlotConflictResponse",
+      "direction": "response",
+      "note": "412: the slot as it is now, so the client can merge its changes and retry without another GET",
+      "json": {
+        "error": "version_conflict",
+        "current": {
+          "slot": 1,
+          "name": "Morning",
+          "version": 4,
+          "updatedAt": "2026-11-05T09:30:00+00:00",
+          "payload": {
+            "v": 1,
+            "values": {
+              "KeybindLeft": "A",
+              "MouseSensitivityX": "0.4",
+              "TrackBallGameSensitivity": "0.35"
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "update-up-to-date",
       "type": "UpdateCheckResponse",
       "direction": "response",
@@ -604,6 +734,29 @@
         "error": "install_nonce_stale"
       },
       "note": "an object with a machine-readable `error` code (docs/config-management.md, 'As built'); AxoSync retries once on install_nonce_stale / install_proof_required with the fresh nonce in the response's X-Install-Nonce header"
+    },
+    {
+      "family": "preferences",
+      "status": 412,
+      "bodyJson": "see preference-slot-conflict-response",
+      "note": "If-Match didn't match the slot's version"
+    },
+    {
+      "family": "preferences",
+      "status": 428,
+      "bodyJson": {
+        "error": "if_match_required"
+      },
+      "note": "a PUT, PATCH or DELETE without If-Match"
+    },
+    {
+      "family": "preferences",
+      "status": 400,
+      "bodyJson": {
+        "error": "invalid_preferences",
+        "detail": "Too many values (at most 256)."
+      },
+      "note": "the name or payload broke a limit; `detail` is for a person to read"
     }
   ]
 }

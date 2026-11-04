@@ -15,6 +15,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<Config> Configs => Set<Config>();
 
+    public DbSet<PreferenceSlot> PreferenceSlots => Set<PreferenceSlot>();
+
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     public DbSet<StudyParticipation> StudyParticipations => Set<StudyParticipation>();
@@ -82,6 +84,19 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.HasOne(r => r.User)
                 .WithMany()
                 .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PreferenceSlot>(entity =>
+        {
+            entity.HasKey(s => new { s.AccountId, s.Slot });
+            entity.Property(s => s.Name).HasMaxLength(40);
+            entity.Property(s => s.Version).IsConcurrencyToken();
+            entity.ToTable(t => t.HasCheckConstraint("CK_PreferenceSlots_Slot", "\"Slot\" BETWEEN 1 AND 5"));
+
+            entity.HasOne(s => s.Account)
+                .WithMany()
+                .HasForeignKey(s => s.AccountId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

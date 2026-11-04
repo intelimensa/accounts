@@ -4,6 +4,7 @@ using Intelimensa.Accounts.Api.Auth;
 using Intelimensa.Accounts.Api.ConfigDelivery;
 using Intelimensa.Accounts.Api.Devices;
 using Intelimensa.Accounts.Api.Manufacturing;
+using Intelimensa.Accounts.Api.Preferences;
 using Intelimensa.Accounts.Api.Updates;
 using Intelimensa.Accounts.Models;
 using Microsoft.AspNetCore.Http.Json;
@@ -43,6 +44,11 @@ public class ApiVectorTests
         ["ConfigDeliveryResponse"] = typeof(ConfigDeliveryResponse),
         ["ConfigDraftRequest"] = typeof(ConfigDraftRequest),
         ["PublishedConfigResponse"] = typeof(PublishedConfigResponse),
+        ["PreferenceSlotListResponse"] = typeof(PreferenceSlotListResponse),
+        ["PreferenceSlotResponse"] = typeof(PreferenceSlotResponse),
+        ["PutPreferenceSlotRequest"] = typeof(PutPreferenceSlotRequest),
+        ["RenamePreferenceSlotRequest"] = typeof(RenamePreferenceSlotRequest),
+        ["PreferenceSlotConflictResponse"] = typeof(PreferenceSlotConflictResponse),
     };
 
     public static TheoryData<string> ExampleNames()

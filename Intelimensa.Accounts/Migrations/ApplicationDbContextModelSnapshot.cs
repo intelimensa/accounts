@@ -483,6 +483,38 @@ namespace Intelimensa.Accounts.Migrations
                     b.ToTable("FirmwareBuilds");
                 });
 
+            modelBuilder.Entity("Intelimensa.Accounts.Models.PreferenceSlot", b =>
+                {
+                    b.Property<int>("AccountId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AccountId", "Slot");
+
+                    b.ToTable("PreferenceSlots", t =>
+                        {
+                            t.HasCheckConstraint("CK_PreferenceSlots_Slot", "\"Slot\" BETWEEN 1 AND 5");
+                        });
+                });
+
             modelBuilder.Entity("Intelimensa.Accounts.Models.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -868,6 +900,17 @@ namespace Intelimensa.Accounts.Migrations
                 {
                     b.HasOne("Intelimensa.Accounts.Models.Account", "Account")
                         .WithMany("ClientInstalls")
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.PreferenceSlot", b =>
+                {
+                    b.HasOne("Intelimensa.Accounts.Models.Account", "Account")
+                        .WithMany()
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

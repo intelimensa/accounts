@@ -71,6 +71,7 @@ rather than trusting this table to stay in sync:
 | `ClientInstalls` | one row per registered AxoSync installation (not a unit: a *device* here is an Intelimensa unit, `BciDevices`) — its signing and agreement public keys, key thumbprint (unique per account), platform, name, app version, slot, registered/last-seen/revoked. Created only at a password login that carries the keys. |
 | `Configs` | key (unique, matches AxoSync's config stems e.g. `ms2`/`ms5`/`biosemi`), display_name, `IsDefault`, `RetiredAt`, and once uploaded the blob's storage key/SHA-256/size and the CEK wrapped under the KEK. |
 | `ConfigKeyIssuances` | the audit trail of delivered config keys: account, install, pairing, config, blob SHA-256, build, lease end. |
+| `PreferenceSlots` | an account's five named preference profiles, keyed (account, slot 1-5): name, the payload as JSON text, `Version` (concurrency token and ETag), updated_at. Rows exist only once written. See "Preference slots" below. |
 
 A fifth table, `RefreshTokens` (user_id, token_hash — SHA-256 of the raw token, never the raw value
 itself, created_at, expires_at, revoked_at, replaced_by_token_id for rotation chains), backs the
@@ -324,6 +325,19 @@ Firmware developers use their own flash tools; only production-ready builds are 
   for the unit's device type, and records the build's version (and bootloader version) on the unit.
 - **Not built**: the API's `confirm`/`rekey`/`/firmware` still take free-text version strings, not a catalog build id.
   Quarry-side caching for offline factories is Quarry's job.
+
+## Preference slots
+
+Five named profiles of AxoSync preferences per account, which follow the user across machines (`Api/Preferences/`,
+`Preferences/PreferenceSlotService`, `Models/PreferenceSlot`; design and the reasoning: `docs/preferences-and-game-results.md`).
+The payload is AxoSync's own sparse map of overrides (`{"v":1,"values":{...}}`; a key that is absent means the loaded config's
+default), and **the server knows no key**: it checks only sizes and control characters (`PreferenceLimits`).
+
+- `GET /api/preferences` (the five slots, no payloads), `GET|PUT /api/preferences/{slot}`, `PATCH .../{slot}/name`, `DELETE`.
+  Policy `AccountClient`: any usable account, with a token bound to an install or not (the proof middleware still covers bound ones).
+- Writes are optimistic: `If-Match` is required (the version read last; `"0"` = the slot has no row). A stale one is 412 with the
+  slot as it is now; a missing one is 428. A never-written slot reads as version 0, empty, with the default name "Profile N".
+- PUT replaces the whole document (a deleted key is simply absent); rows are created lazily; deleting removes the row.
 
 ## Releases & downloads
 
