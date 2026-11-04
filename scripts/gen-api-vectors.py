@@ -161,6 +161,31 @@ def main():
         "manufacturedAt": None, "firmwareUpdatedAt": None},
         "a held serial has no code and no firmware version yet: the version is null")
 
+    # ---- /api/preferences (preference slots; docs/preferences-and-game-results.md) -------------------------------
+    prefs = {"v": 1, "values": {"KeybindLeft": "A", "MouseSensitivityX": "0.4", "TrackBallGameSensitivity": "0.35"}}
+    example("preference-slots-response", "PreferenceSlotListResponse", "response", {"slots": [
+        {"slot": 1, "name": "Morning", "version": 3, "updatedAt": "2026-11-05T09:00:00+00:00", "empty": False},
+        {"slot": 2, "name": "Profile 2", "version": 0, "updatedAt": None, "empty": True},
+        {"slot": 3, "name": "Profile 3", "version": 0, "updatedAt": None, "empty": True},
+        {"slot": 4, "name": "Profile 4", "version": 0, "updatedAt": None, "empty": True},
+        {"slot": 5, "name": "Profile 5", "version": 0, "updatedAt": None, "empty": True}]},
+        "always five entries, no payloads; a slot that was never written is empty at version 0 and carries its default name")
+    example("preference-slot-response", "PreferenceSlotResponse", "response", {
+        "slot": 1, "name": "Morning", "version": 3, "updatedAt": "2026-11-05T09:00:00+00:00", "payload": prefs},
+        "also the ETag header (\"3\"); a sparse map: a key that is absent means the loaded config's default")
+    example("preference-slot-response-empty", "PreferenceSlotResponse", "response", {
+        "slot": 2, "name": "Profile 2", "version": 0, "updatedAt": None, "payload": {"v": 1, "values": {}}},
+        "a slot that was never written: GET answers 200 with version 0 (ETag \"0\")")
+    example("put-preference-slot-request", "PutPreferenceSlotRequest", "request", {
+        "name": "Morning", "payload": prefs},
+        "PUT /api/preferences/{slot} replaces name and payload; If-Match is required (\"0\" creates, otherwise the version read last)")
+    example("rename-preference-slot-request", "RenamePreferenceSlotRequest", "request", {"name": "Evening"},
+            "PATCH /api/preferences/{slot}/name; If-Match is required as for PUT")
+    example("preference-slot-conflict-response", "PreferenceSlotConflictResponse", "response", {
+        "error": "version_conflict",
+        "current": {"slot": 1, "name": "Morning", "version": 4, "updatedAt": "2026-11-05T09:30:00+00:00", "payload": prefs}},
+        "412: the slot as it is now, so the client can merge its changes and retry without another GET")
+
     # ---- /api/releases/latest (an update check) -------------------------------------------------------------------
     artifact = {"fileName": "AxoSyncSetup-1.4.2.dmg", "sizeBytes": signed["sizeBytes"], "sha256": signed["sha256"],
                 "signature": signed["signature"], "downloadUrl": "api/releases/1.4.2/MacOSArm64/file"}
@@ -220,12 +245,18 @@ def main():
         {"family": "install proofs and config delivery", "status": 401, "bodyJson": {"error": "install_nonce_stale"},
          "note": "an object with a machine-readable `error` code (docs/config-management.md, 'As built'); AxoSync retries once on "
                  "install_nonce_stale / install_proof_required with the fresh nonce in the response's X-Install-Nonce header"},
+        {"family": "preferences", "status": 412, "bodyJson": "see preference-slot-conflict-response",
+         "note": "If-Match didn't match the slot's version"},
+        {"family": "preferences", "status": 428, "bodyJson": {"error": "if_match_required"},
+         "note": "a PUT, PATCH or DELETE without If-Match"},
+        {"family": "preferences", "status": 400, "bodyJson": {"error": "invalid_preferences", "detail": "Too many values (at most 256)."},
+         "note": "the name or payload broke a limit; `detail` is for a person to read"},
     ]
 
     doc = {
         "contract": "intelimensa-accounts-api-v1",
         "description": "Shared fixture for the accounts server's JSON API (auth, manufacturing, update check, device registration, "
-                       "config delivery and config publishing). Owner: accounts repo "
+                       "config delivery, config publishing and preference slots). Owner: accounts repo "
                        "(testdata/api-vectors.json); copies elsewhere must be byte-identical (sync-vectors.sh). `examples`: JSON on the "
                        "wire. The server must read every `request` into its record and write every `response` back out identically "
                        "(nulls kept); a client must write every `request` it sends as given (optional fields may be left out) and read "

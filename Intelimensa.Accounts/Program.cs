@@ -2,6 +2,7 @@ using Intelimensa.Accounts.Api.Auth;
 using Intelimensa.Accounts.Api.ConfigDelivery;
 using Intelimensa.Accounts.Api.Devices;
 using Intelimensa.Accounts.Api.Manufacturing;
+using Intelimensa.Accounts.Api.Preferences;
 using Intelimensa.Accounts.Api.Updates;
 using Intelimensa.Accounts.Api.Telemetry;
 using Intelimensa.Accounts.ConfigDelivery;
@@ -9,6 +10,7 @@ using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Email;
 using Intelimensa.Accounts.Manufacturing;
 using Intelimensa.Accounts.Models;
+using Intelimensa.Accounts.Preferences;
 using Intelimensa.Accounts.Publishing;
 using Intelimensa.Accounts.Security;
 using Intelimensa.Accounts.Storage;
@@ -53,6 +55,7 @@ builder.Services.AddSingleton<KeyEncryption>();
 builder.Services.AddSingleton<IConfigStorage, LocalConfigStorage>();
 builder.Services.AddScoped<ConfigPublisher>();
 builder.Services.AddScoped<ConfigIssuer>();
+builder.Services.AddScoped<PreferenceSlotService>();
 builder.Services.AddScoped<ClientInstallRegistry>();
 builder.Services.AddSingleton<InstallNonces>();
 
@@ -178,6 +181,12 @@ builder.Services.AddAuthorization(options =>
         .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
         .RequireAuthenticatedUser());
 
+    // AxoSync's preference slots (JWT): any usable account, with a token bound to an install or not; the endpoints
+    // additionally require the account to still be usable.
+    options.AddPolicy("AccountClient", policy => policy
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser());
+
     // AxoSync's config delivery (JWT): only a token bound to a registered client install. Its proof on each
     // request is checked by InstallProofMiddleware, which every bound token goes through.
     options.AddPolicy("InstallClient", policy => policy
@@ -248,6 +257,7 @@ app.MapRazorPages()
 app.MapAuthEndpoints();
 app.MapDeviceEndpoints();
 app.MapConfigEndpoints();
+app.MapPreferenceEndpoints();
 app.MapConfigPublishingEndpoints();
 app.MapManufacturingEndpoints();
 app.MapReleaseEndpoints();

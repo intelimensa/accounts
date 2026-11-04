@@ -1,6 +1,6 @@
 # Preference slots and game results (design draft)
 
-Status: **draft, nothing implemented.** Agreed in discussion with the AxoSync side; the server is built first, then
+Status: **preference slots (section 1) are built on the `preference-slots` branch; game results (section 2) are still a draft, and predate the install-bound auth and config delivery, so revisit them before building.** Agreed in discussion with the AxoSync side; the server is built first, then
 AxoSync follows. Two features share one pattern (an account-scoped document that AxoSync reads and writes through the
 JSON API, with the contract pinned by a shared fixture):
 
@@ -35,32 +35,35 @@ today and it must survive (a later release can then change a default for users w
 { "v": 1, "values": { "KeybindLeft": "A", "TrackBallGameSensitivity": "0.4" } }
 ```
 
-- Keys are AxoSync's `Preferences.Keys` names; values are strings. The server does not know any key. It checks only: valid
-  JSON, an object with `v` (integer >= 1) and `values` (object of string -> string), at most 256 keys, key length <= 64,
-  value length <= 1024, whole payload <= 32 KiB. Unknown properties other than these are rejected so the format can't
-  silently grow.
+- Keys are AxoSync's `Preferences.Keys` names; values are strings. The server does not know any key. It checks only: an object
+  with `v` (integer >= 1) and `values` (string -> string), at most 256 keys, key length 1..64, value length <= 1024, no control
+  characters in keys, values or the name (AxoSync's local file is one line per value), whole payload <= 32 KiB. It stores the
+  payload with the keys in ordinal order, so equal content is equal text.
 - An empty slot (`values: {}`) is "pure config defaults". Clearing a slot is `DELETE`, which removes the row (the name
-  resets too).
+  resets too). Names are trimmed, 1..40 characters.
 - `v` is the payload format version, not the key set. Key renames are migrated by the client; the server never rewrites a
   payload.
 
-### Endpoints (JWT bearer, any active account)
+### Endpoints (policy `AccountClient`: any usable account, bound or unbound token)
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/preferences` | list: `[{ slot, name, version, updatedAt, empty }]` x5. No payloads. |
-| GET | `/api/preferences/{slot}` | the slot with its payload; `ETag: "<version>"`. 404 only for a slot number outside 1..5. |
-| PUT | `/api/preferences/{slot}` | replace name + payload. **`If-Match` is required** (`"0"` = create, only if no row). 412 when the version differs, with the current slot in the body so the client can merge without another GET. Returns the new slot. |
-| PATCH | `/api/preferences/{slot}/name` | rename only (also needs `If-Match`; doesn't touch the payload). |
-| DELETE | `/api/preferences/{slot}` | `If-Match` required. 204; also fine if the row never existed. |
+| GET | `/api/preferences` | `{ slots: [{ slot, name, version, updatedAt, empty }] }` x5, no payloads. `empty` = no row, or no values. |
+| GET | `/api/preferences/{slot}` | the slot with its payload; `ETag: "<version>"`. A never-written slot is 200 at version 0 with the default name and `{ v: 1, values: {} }`. 404 `unknown_slot` for a number outside 1..5. |
+| PUT | `/api/preferences/{slot}` | replace name + payload. **`If-Match` is required** (`"0"` = create, only if no row). 412 `version_conflict` when the version differs, with the current slot in `current`, so the client can merge without another GET. Returns the new slot. |
+| PATCH | `/api/preferences/{slot}/name` | rename only (also needs `If-Match`; keeps the payload; on a never-written slot it creates an empty one). |
+| DELETE | `/api/preferences/{slot}` | `If-Match` required. 204; also when the row never existed. 412 on a stale version. |
+
+Bodies are capped before parsing (PUT 64 KiB, rename 1 KiB; 413 beyond). Other errors: 400 `invalid_preferences` (with a `detail` for a person to read) and `invalid_if_match`, 428 `if_match_required`,
+401. The quotes in `If-Match` are optional. Only the fields named above are read; unknown JSON properties are ignored (a newer
+client may send more), but the payload rules below are strict. Dates are written with fractional seconds
+(`2026-11-04T22:16:51.342076+00:00`), so a client must read those as well as the fixture's whole-second ones.
 
 Whole-document replace on purpose: with a sparse map a deleted key is just an absent key, so no patch/tombstone
-semantics are needed. Concurrency is optimistic (`Version`), not locked. Two machines on one account is the normal case, so
-412 is expected and the client resolves it with a key-level merge against the last version it synced (client side; the
-server just reports the conflict).
-
-Errors follow the existing convention (bare JSON string for 400/404, ProblemDetails where `Results.Problem` is used).
-Accounts that are revoked or expired are refused as everywhere else.
+semantics are needed. Concurrency is optimistic (`Version` is also an EF concurrency token, so two simultaneous writers
+from one version cannot both win), not locked. Two machines on one account is the normal case, so 412 is expected and the
+client resolves it with a key-level merge against the last version it synced (client side; the server just reports the
+conflict).
 
 ### Not on the server
 
@@ -210,9 +213,11 @@ participants.
 
 Following the workspace rule, a contract change starts with its fixture in the owner (this repo):
 
-- **`testdata/api-vectors.json`** (generator `scripts/gen-api-vectors.py`) gets the new wire examples:
-  `PreferenceSlotList` (response), `PreferenceSlot` (response), `PutPreferenceSlotRequest`, the 412 body, `GameResultRequest`,
-  and the new error families. Round-tripped by `ApiVectorTests`; AxoSync's hand-written JSON checks against its copy.
+- **`testdata/api-vectors.json`** (generator `scripts/gen-api-vectors.py`) gets the new wire examples. Done for preference slots:
+  `PreferenceSlotListResponse`, `PreferenceSlotResponse` (written and empty), `PutPreferenceSlotRequest`,
+  `RenamePreferenceSlotRequest`, `PreferenceSlotConflictResponse` (the 412 body) and the `preferences` error family. Still to
+  come for game results: `GameResultRequest` and its errors. Round-tripped by `ApiVectorTests`; AxoSync's hand-written JSON checks
+  against its copy.
 - **`testdata/game-result-envelope-vectors.json`** (new; generator `scripts/gen-game-result-vectors.py`, deterministic with
   fixed ephemeral keys and nonces): throwaway server key pair, a few valid envelopes (with their AAD and plaintext), and
   negative cases (wrong AAD user/session/game type, tampered `ct`/`epk`/`nonce`, unknown `kid`/`v`, truncated tag). The
@@ -223,9 +228,11 @@ Following the workspace rule, a contract change starts with its fixture in the o
 
 ## 4. Build order (server)
 
-1. Fixtures first: extend `gen-api-vectors.py`, add `gen-game-result-vectors.py`; run `sync-vectors.sh`.
-2. `PreferenceSlot` entity + migration; `Api/Preferences/` contracts and endpoints; tests (`If-Match` semantics, lazy
-   rows, limits, revoked account).
+1. Fixtures first: extend `gen-api-vectors.py` (**done for preference slots**; the copies in `axosync` and Quarry are synced
+   when the app side starts), add `gen-game-result-vectors.py`.
+2. **Done:** `PreferenceSlot` entity + migration (`AddPreferenceSlots`); `Api/Preferences/` contracts and endpoints;
+   `PreferenceSlotService` tests (versions, conflicts, concurrent writers, limits). The endpoints were also exercised by hand
+   against `scripts/test-server.sh`.
 3. `GameResult` entity + migration; `Api/GameResults/` contracts, `EnvelopeDecryptor`, endpoint; tests (gate on
    participation, idempotency, AAD mismatch, unknown key, withdrawal).
 4. Key configuration and the operator notes in `deployment-vps.md`; update `CLAUDE.md`'s API/data-model sections.
