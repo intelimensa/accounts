@@ -337,7 +337,8 @@ default), and **the server knows no key**: it checks only sizes and control char
   Policy `AccountClient`: any usable account, with a token bound to an install or not (the proof middleware still covers bound ones).
 - Writes are optimistic: `If-Match` is required (the version read last; `"0"` = the slot has no row). A stale one is 412 with the
   slot as it is now; a missing one is 428. A never-written slot reads as version 0, empty, with the default name "Profile N".
-- PUT replaces the whole document (a deleted key is simply absent); rows are created lazily; deleting removes the row.
+- PUT replaces the whole document (a deleted key is simply absent); rename changes the name only and keeps the content; rows are created lazily; deleting removes the row.
+- Request bodies are capped before they are parsed (`[RequestSizeLimit]`: 64 KiB for PUT, 1 KiB for rename; 413 beyond that), on top of the payload limits.
 
 ## Releases & downloads
 

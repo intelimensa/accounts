@@ -54,7 +54,7 @@ today and it must survive (a later release can then change a default for users w
 | PATCH | `/api/preferences/{slot}/name` | rename only (also needs `If-Match`; keeps the payload; on a never-written slot it creates an empty one). |
 | DELETE | `/api/preferences/{slot}` | `If-Match` required. 204; also when the row never existed. 412 on a stale version. |
 
-Other errors: 400 `invalid_preferences` (with a `detail` for a person to read) and `invalid_if_match`, 428 `if_match_required`,
+Bodies are capped before parsing (PUT 64 KiB, rename 1 KiB; 413 beyond). Other errors: 400 `invalid_preferences` (with a `detail` for a person to read) and `invalid_if_match`, 428 `if_match_required`,
 401. The quotes in `If-Match` are optional. Only the fields named above are read; unknown JSON properties are ignored (a newer
 client may send more), but the payload rules below are strict. Dates are written with fractional seconds
 (`2026-11-04T22:16:51.342076+00:00`), so a client must read those as well as the fixture's whole-second ones.

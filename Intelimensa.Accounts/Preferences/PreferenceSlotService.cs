@@ -63,8 +63,8 @@ public class PreferenceSlotService(ApplicationDbContext db, TimeProvider? clock 
         if (error is not null)
             return new SlotResult(SlotOutcome.Invalid, Error: error);
 
-        var row = await db.PreferenceSlots.AsNoTracking().FirstOrDefaultAsync(s => s.AccountId == accountId && s.Slot == slot);
-        return await WriteAsync(accountId, slot, expectedVersion, normalized!, row?.Payload ?? EmptyPayload);
+        // the payload is not read here: WriteAsync keeps the row's own, as it is when the version is checked
+        return await WriteAsync(accountId, slot, expectedVersion, normalized!, payloadJson: null);
     }
 
     /// <summary>Removes the slot's row (name and payload reset). A slot with no row is already deleted.</summary>
@@ -88,7 +88,8 @@ public class PreferenceSlotService(ApplicationDbContext db, TimeProvider? clock 
         }
     }
 
-    private async Task<SlotResult> WriteAsync(int accountId, int slot, long expectedVersion, string name, string payloadJson)
+    /// <summary>With a null <paramref name="payloadJson"/> the slot keeps its content (a rename; a new slot starts empty).</summary>
+    private async Task<SlotResult> WriteAsync(int accountId, int slot, long expectedVersion, string name, string? payloadJson)
     {
         var row = await db.PreferenceSlots.FirstOrDefaultAsync(s => s.AccountId == accountId && s.Slot == slot);
         if (row is null)
@@ -96,7 +97,7 @@ public class PreferenceSlotService(ApplicationDbContext db, TimeProvider? clock 
             if (expectedVersion != 0)
                 return new SlotResult(SlotOutcome.Conflict, Unwritten(slot));
 
-            row = new PreferenceSlot { AccountId = accountId, Slot = slot, Name = name, Payload = payloadJson, Version = 1, UpdatedAt = _clock.GetUtcNow() };
+            row = new PreferenceSlot { AccountId = accountId, Slot = slot, Name = name, Payload = payloadJson ?? EmptyPayload, Version = 1, UpdatedAt = _clock.GetUtcNow() };
             db.PreferenceSlots.Add(row);
         }
         else
@@ -105,7 +106,7 @@ public class PreferenceSlotService(ApplicationDbContext db, TimeProvider? clock 
                 return new SlotResult(SlotOutcome.Conflict, Read(row));
 
             row.Name = name;
-            row.Payload = payloadJson;
+            row.Payload = payloadJson ?? row.Payload;
             row.Version = expectedVersion + 1;
             row.UpdatedAt = _clock.GetUtcNow();
         }

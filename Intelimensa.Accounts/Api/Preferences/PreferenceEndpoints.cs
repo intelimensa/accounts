@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Preferences;
 using Intelimensa.Accounts.Security;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Intelimensa.Accounts.Api.Preferences;
@@ -46,6 +47,10 @@ public static class PreferenceEndpoints
         return Respond(http, await slots.GetAsync(accountId, slot));
     }
 
+    // The payload cap is checked after parsing, so the body is capped before it: a name and 32 KiB of settings fit well inside.
+    private const int MaxBodyBytes = 2 * PreferenceLimits.MaxPayloadBytes;
+
+    [RequestSizeLimit(MaxBodyBytes)]
     private static async Task<IResult> PutAsync(
         int slot, PutPreferenceSlotRequest? request, HttpContext http, ClaimsPrincipal user, ApplicationDbContext db, PreferenceSlotService slots)
     {
@@ -57,6 +62,7 @@ public static class PreferenceEndpoints
         return Respond(http, await slots.PutAsync(accountId, slot, expected, request?.Name, request?.Payload));
     }
 
+    [RequestSizeLimit(1024)]
     private static async Task<IResult> RenameAsync(
         int slot, RenamePreferenceSlotRequest? request, HttpContext http, ClaimsPrincipal user, ApplicationDbContext db, PreferenceSlotService slots)
     {
