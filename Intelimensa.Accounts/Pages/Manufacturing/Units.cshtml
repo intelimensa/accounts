@@ -1,5 +1,6 @@
 @page
 @model Intelimensa.Accounts.Pages.Manufacturing.UnitsModel
+@using Intelimensa.Accounts.Manufacturing
 @using Intelimensa.Accounts.Models
 @using Intelimensa.Accounts.Pages.Manufacturing
 @{
@@ -8,6 +9,34 @@
 
 <h1 class="h3 mb-3">Units</h1>
 <partial name="_Results" model="Model" />
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-sm-4 col-md-3">
+        <label class="form-label small" for="f-done">Step done</label>
+        <select id="f-done" name="done" class="form-select form-select-sm">
+            <option value="">(any)</option>
+            @foreach (var step in ProductionChecklist.Steps)
+            {
+                <option value="@step" selected="@(Model.Done == step)">@ProductionChecklist.Title(step)</option>
+            }
+        </select>
+    </div>
+    <div class="col-sm-4 col-md-3">
+        <label class="form-label small" for="f-notdone">Step not done</label>
+        <select id="f-notdone" name="notDone" class="form-select form-select-sm">
+            <option value="">(any)</option>
+            @foreach (var step in ProductionChecklist.Steps)
+            {
+                <option value="@step" selected="@(Model.NotDone == step)">@ProductionChecklist.Title(step)</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto form-check ms-2">
+        <input id="f-all" type="checkbox" name="all" value="true" class="form-check-input" checked="@Model.All" />
+        <label class="form-check-label small" for="f-all">Include units not issued here</label>
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-ia-outline btn-sm">Filter</button></div>
+</form>
 
 <div class="feature-card">
     @if (!Model.Units.Any())
@@ -18,7 +47,7 @@
     {
         <table class="table table-sm align-middle mb-0">
             <thead>
-                <tr><th>Serial</th><th>Type</th><th>Status</th><th>Firmware</th><th>Bootloader</th><th></th></tr>
+                <tr><th>Serial</th><th>Type</th><th>Status</th><th>Firmware</th><th>Bootloader</th><th>Checklist</th><th></th></tr>
             </thead>
             <tbody>
             @foreach (var unit in Model.Units)
@@ -29,6 +58,15 @@
                     <td><span class="badge text-bg-secondary">@(unit.Held ? "Held (no code)" : unit.Status.ToString())</span></td>
                     <td>@(unit.FirmwareVersion ?? "-")</td>
                     <td>@(unit.BootloaderVersion ?? "-")</td>
+                    <td>
+                        <a asp-page="/Manufacturing/Unit" asp-route-serial="@unit.Serial" class="text-decoration-none">
+                            @foreach (var step in ProductionChecklist.Steps)
+                            {
+                                var done = unit.DoneSteps.Contains(step);
+                                <span title="@ProductionChecklist.Title(step): @(done ? "done" : "not done")" class="@(done ? "text-success" : "text-muted")">@(done ? "●" : "○")</span>
+                            }
+                        </a>
+                    </td>
                     <td class="text-end">
                         @if (unit.Status == BciDeviceStatus.Reserved)
                         {

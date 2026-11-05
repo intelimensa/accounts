@@ -1,0 +1,182 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.UnitModel
+@using Intelimensa.Accounts.Manufacturing
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.Pages.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing: Unit checklist";
+}
+
+<h1 class="h3 mb-3">Unit checklist</h1>
+<partial name="_ProductionMessages" model="Model" />
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-sm-6 col-md-4">
+        <input name="serial" value="@Model.Serial" class="form-control font-monospace" placeholder="Serial" required />
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-ia-outline">Open</button></div>
+</form>
+
+@if (Model.Unit is null)
+{
+    if (!string.IsNullOrWhiteSpace(Model.Serial))
+    {
+        <p class="text-muted">No unit with that serial.</p>
+    }
+}
+else
+{
+    var unit = Model.Unit.Unit;
+    <div class="feature-card mb-3">
+        <div class="d-flex flex-wrap gap-3 align-items-baseline">
+            <span class="h5 mb-0 font-monospace">@SerialNumber.ToDisplay(unit.SerialNumber)</span>
+            <span>@unit.DeviceType.ToUpperInvariant()</span>
+            <span class="badge text-bg-secondary">@(unit.IsHeld ? "Held (no code)" : unit.Status.ToString())</span>
+            @if (Model.Unit.Paired)
+            {
+                <span class="badge text-bg-warning">Paired with a participant</span>
+            }
+        </div>
+        @if (Model.Unit.Paired)
+        {
+            <p class="small text-muted mb-0 mt-2">
+                This unit is already paired with a participant. Every change below needs the confirmation box ticked.
+            </p>
+        }
+    </div>
+
+    <div class="feature-card mb-4">
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Step</th><th>Status</th><th>When (UTC)</th><th>By</th><th>Detail</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var step in ProductionChecklist.Steps)
+            {
+                var row = Model.Unit.Get(step);
+                var rowId = $"step-{(int)step}";
+                <tr>
+                    <td>@ProductionChecklist.Title(step)</td>
+                    @if (row is null)
+                    {
+                        <td><span class="badge text-bg-light border">Not done</span></td>
+                        <td colspan="3"></td>
+                        <td class="text-end"><a class="btn btn-link btn-sm" data-bs-toggle="collapse" href="#@rowId">Mark done</a></td>
+                    }
+                    else
+                    {
+                        <td><span class="badge text-bg-success">Done</span></td>
+                        <td>@ProductionChecklistFormat.Utc(row.PerformedAt)</td>
+                        <td>@ProductionPageModel.Who(Model.Emails, row.PerformedByUserId)
+                            @if (row.Source != ProductionStepSource.Manual) { <span class="text-muted small">(@row.Source)</span> }
+                        </td>
+                        <td>
+                            @if (row.MountingType is not null) { <div>@row.MountingType.DisplayName</div> }
+                            @if (row.ElectrodeSet is not null)
+                            {
+                                <div><a asp-page="/Manufacturing/ElectrodeSet" asp-route-id="@row.ElectrodeSet.Id">@row.ElectrodeSet.Name @row.ElectrodeSet.Version</a></div>
+                            }
+                            @if (row.Note is not null) { <div class="small text-muted" style="white-space: pre-line">@row.Note</div> }
+                        </td>
+                        <td class="text-end"><a class="btn btn-link btn-sm" data-bs-toggle="collapse" href="#@rowId">Edit / undo</a></td>
+                    }
+                </tr>
+                <tr class="collapse" id="@rowId">
+                    <td colspan="6">
+                        <form method="post" asp-page-handler="@(row is null ? "Mark" : "Edit")" asp-route-step="@step" asp-route-serial="@Model.Serial" class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label small" for="@rowId-when">Date and time (UTC)</label>
+                                <input id="@rowId-when" type="datetime-local" name="PerformedAt" class="form-control"
+                                       value="@(row is null ? Model.Now : ProductionChecklistFormat.Input(row.PerformedAt))" />
+                            </div>
+                            @if (step == ProductionStepType.MountingAssigned)
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label small" for="@rowId-mount">Mounting clip</label>
+                                    <select id="@rowId-mount" name="MountingTypeId" class="form-select">
+                                        <option value="">(not specified)</option>
+                                        @foreach (var m in Model.MountingOptions.Where(m => m.RetiredAt is null || m.Id == row?.MountingTypeId))
+                                        {
+                                            <option value="@m.Id" selected="@(m.Id == row?.MountingTypeId)">@m.DisplayName@(m.RetiredAt is null ? "" : " (retired)")</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                            @if (step == ProductionStepType.ElectrodesAssigned)
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label small" for="@rowId-set">Electrode set</label>
+                                    <select id="@rowId-set" name="ElectrodeSetId" class="form-select">
+                                        <option value="">(not specified)</option>
+                                        @foreach (var s in Model.ElectrodeOptions.Where(s => s.RetiredAt is null || s.Id == row?.ElectrodeSetId))
+                                        {
+                                            <option value="@s.Id" selected="@(s.Id == row?.ElectrodeSetId)">@s.Name @s.Version@(s.RetiredAt is null ? "" : " (retired)")</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                            <div class="col-12">
+                                <label class="form-label small" for="@rowId-note">Note <span class="text-muted">(opt.)</span></label>
+                                <textarea id="@rowId-note" name="Note" rows="2" maxlength="@ProductionChecklist.MaxNoteLength" class="form-control">@row?.Note</textarea>
+                            </div>
+                            @if (Model.Unit.Paired)
+                            {
+                                <div class="col-12 form-check ms-2">
+                                    <input id="@rowId-ok" type="checkbox" name="ConfirmPaired" value="true" class="form-check-input" />
+                                    <label class="form-check-label small" for="@rowId-ok">I confirm this unit is paired with a participant and I want to change its checklist.</label>
+                                </div>
+                            }
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-ia-outline btn-sm">@(row is null ? "Mark done" : "Save changes")</button>
+                            </div>
+                        </form>
+                        @if (row is not null)
+                        {
+                            <form method="post" asp-page-handler="Undo" asp-route-step="@step" asp-route-serial="@Model.Serial" class="row g-2">
+                                <div class="col-md-6">
+                                    <input name="reason" class="form-control form-control-sm" maxlength="@ProductionChecklist.MaxNoteLength" placeholder="Reason for undoing (optional)" />
+                                </div>
+                                @if (Model.Unit.Paired)
+                                {
+                                    <div class="col-auto form-check ms-2 align-self-center">
+                                        <input id="@rowId-uok" type="checkbox" name="confirmPaired" value="true" class="form-check-input" />
+                                        <label class="form-check-label small" for="@rowId-uok">Confirm (paired unit)</label>
+                                    </div>
+                                }
+                                <div class="col-auto"><button type="submit" class="btn btn-link btn-sm text-danger">Undo this step</button></div>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="h5">History</h2>
+    <div class="feature-card">
+        @if (Model.History.Count == 0)
+        {
+            <p class="text-muted mb-0">No checklist changes recorded yet.</p>
+        }
+        else
+        {
+            <table class="table table-sm mb-0">
+                <thead><tr><th>When (UTC)</th><th>Step</th><th>Change</th><th>By</th><th>Detail</th></tr></thead>
+                <tbody>
+                @foreach (var e in Model.History)
+                {
+                    <tr>
+                        <td>@ProductionChecklistFormat.Utc(e.OccurredAt)</td>
+                        <td>@ProductionChecklist.Title(e.Step!.Value)</td>
+                        <td>@(e.Type switch { BciDeviceEventType.StepRecorded => "Done", BciDeviceEventType.StepEdited => "Edited", _ => "Undone" })
+                            @if (e.WasPaired) { <span class="badge text-bg-warning">paired</span> }</td>
+                        <td>@ProductionPageModel.Who(Model.Emails, e.UserId)</td>
+                        <td class="small text-muted" style="white-space: pre-line">@e.Note</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+<p class="mt-3"><a asp-page="/Manufacturing/Units">&larr; Back to units</a></p>

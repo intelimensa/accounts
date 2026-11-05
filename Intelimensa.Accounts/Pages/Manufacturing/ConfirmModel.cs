@@ -1,3 +1,4 @@
+using Intelimensa.Accounts.Models;
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Manufacturing;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +20,8 @@ public class ConfirmModel(ApplicationDbContext db, UnitProvisioning provisioning
         if (build is null)
             return await FailAsync(buildError);
 
-        var result = await Provisioning.ConfirmAsync(userId, serialNumber, registrationCode, build.Version, build.BootloaderVersion);
+        var result = await Provisioning.ConfirmAsync(userId, serialNumber, registrationCode, build.Version, build.BootloaderVersion,
+            ProductionStepSource.Manual);
         if (!result.IsOk)
             return await FailAsync(result.Message);
 

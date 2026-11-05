@@ -232,11 +232,17 @@ namespace Intelimensa.Accounts.Migrations
                     b.Property<int?>("Reason")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("Step")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Type")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("UserId")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("WasPaired")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -423,6 +429,131 @@ namespace Intelimensa.Accounts.Migrations
                     b.ToTable("ConfigKeyIssuances");
                 });
 
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodeAssembly", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ElectrodeSetId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PartNumber")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ElectrodeSetId", "Name", "Version")
+                        .IsUnique();
+
+                    b.ToTable("ElectrodeAssemblies");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodePart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ElectrodeAssemblyId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PartNumber")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ElectrodeAssemblyId", "Name", "Version")
+                        .IsUnique();
+
+                    b.ToTable("ElectrodeParts");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodeSet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("FrozenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastModifiedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PreviousId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RetiredByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PreviousId");
+
+                    b.HasIndex("Name", "Version")
+                        .IsUnique();
+
+                    b.ToTable("ElectrodeSets");
+                });
+
             modelBuilder.Entity("Intelimensa.Accounts.Models.FirmwareBuild", b =>
                 {
                     b.Property<int>("Id")
@@ -483,6 +614,34 @@ namespace Intelimensa.Accounts.Migrations
                     b.ToTable("FirmwareBuilds");
                 });
 
+            modelBuilder.Entity("Intelimensa.Accounts.Models.MountingType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RetiredByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("MountingTypes");
+                });
+
             modelBuilder.Entity("Intelimensa.Accounts.Models.PreferenceSlot", b =>
                 {
                     b.Property<int>("AccountId")
@@ -513,6 +672,51 @@ namespace Intelimensa.Accounts.Migrations
                         {
                             t.HasCheckConstraint("CK_PreferenceSlots_Slot", "\"Slot\" BETWEEN 1 AND 5");
                         });
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ProductionStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BciDeviceId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ElectrodeSetId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MountingTypeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("PerformedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PerformedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Step")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ElectrodeSetId");
+
+                    b.HasIndex("MountingTypeId");
+
+                    b.HasIndex("BciDeviceId", "Step")
+                        .IsUnique();
+
+                    b.ToTable("ProductionSteps");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.RefreshToken", b =>
@@ -907,6 +1111,28 @@ namespace Intelimensa.Accounts.Migrations
                     b.Navigation("Account");
                 });
 
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodeAssembly", b =>
+                {
+                    b.HasOne("Intelimensa.Accounts.Models.ElectrodeSet", "ElectrodeSet")
+                        .WithMany("Assemblies")
+                        .HasForeignKey("ElectrodeSetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ElectrodeSet");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodePart", b =>
+                {
+                    b.HasOne("Intelimensa.Accounts.Models.ElectrodeAssembly", "ElectrodeAssembly")
+                        .WithMany("Parts")
+                        .HasForeignKey("ElectrodeAssemblyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ElectrodeAssembly");
+                });
+
             modelBuilder.Entity("Intelimensa.Accounts.Models.PreferenceSlot", b =>
                 {
                     b.HasOne("Intelimensa.Accounts.Models.Account", "Account")
@@ -916,6 +1142,31 @@ namespace Intelimensa.Accounts.Migrations
                         .IsRequired();
 
                     b.Navigation("Account");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ProductionStep", b =>
+                {
+                    b.HasOne("Intelimensa.Accounts.Models.BciDevice", "BciDevice")
+                        .WithMany("ProductionSteps")
+                        .HasForeignKey("BciDeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Intelimensa.Accounts.Models.ElectrodeSet", "ElectrodeSet")
+                        .WithMany()
+                        .HasForeignKey("ElectrodeSetId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Intelimensa.Accounts.Models.MountingType", "MountingType")
+                        .WithMany()
+                        .HasForeignKey("MountingTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BciDevice");
+
+                    b.Navigation("ElectrodeSet");
+
+                    b.Navigation("MountingType");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.RefreshToken", b =>
@@ -1040,6 +1291,18 @@ namespace Intelimensa.Accounts.Migrations
             modelBuilder.Entity("Intelimensa.Accounts.Models.BciDevice", b =>
                 {
                     b.Navigation("AccountDevices");
+
+                    b.Navigation("ProductionSteps");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodeAssembly", b =>
+                {
+                    b.Navigation("Parts");
+                });
+
+            modelBuilder.Entity("Intelimensa.Accounts.Models.ElectrodeSet", b =>
+                {
+                    b.Navigation("Assemblies");
                 });
 
             modelBuilder.Entity("Intelimensa.Accounts.Models.Release", b =>

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Intelimensa.Accounts.Api.Auth;
 using Intelimensa.Accounts.Api.ConfigDelivery;
 using Intelimensa.Accounts.Api.Devices;
@@ -60,6 +61,10 @@ builder.Services.AddScoped<ClientInstallRegistry>();
 builder.Services.AddSingleton<InstallNonces>();
 
 builder.Services.AddScoped<UnitProvisioning>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddScoped<ProductionChecklist>();
+builder.Services.AddScoped<MountingTypeService>();
+builder.Services.AddScoped<ElectrodeSetService>();
 builder.Services.AddOptions<ManufacturingOptions>()
     .Bind(builder.Configuration.GetSection("Manufacturing"))
     .ValidateOnStart();

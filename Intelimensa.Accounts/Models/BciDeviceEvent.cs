@@ -7,6 +7,15 @@ public enum BciDeviceEventType
     Voided = 2,
     Rekeyed = 3,
     FirmwareWritten = 4,
+
+    /// <summary>A production checklist step was marked done (see <see cref="ProductionStepType"/>). Values 5-7 are the checklist's.</summary>
+    StepRecorded = 5,
+
+    /// <summary>A recorded step's date, note or value was changed.</summary>
+    StepEdited = 6,
+
+    /// <summary>A recorded step was undone.</summary>
+    StepUndone = 7,
 }
 
 /// <summary>
@@ -49,6 +58,12 @@ public class BciDeviceEvent
     public RekeyReason? Reason { get; set; }
 
     public string? Note { get; set; }
+
+    /// <summary>Set for the checklist events (<see cref="BciDeviceEventType.StepRecorded"/> and friends): which step.</summary>
+    public ProductionStepType? Step { get; set; }
+
+    /// <summary>For checklist events: the unit was paired with a participant when the change was made (it needed the extra confirmation).</summary>
+    public bool WasPaired { get; set; }
 
     /// <summary>The unit's recorded firmware version before this event.</summary>
     public string? FirmwareVersionBefore { get; set; }

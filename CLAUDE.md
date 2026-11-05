@@ -286,6 +286,23 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
 - **Not built**: the station app, AxoSync reading the identity, a participant/AxoSync-facing firmware-update endpoint (the manufacturing one is built), batch
   reserve for offline factories, any UI to grant `Manufacturer`.
 
+## Production checklist
+
+Implemented: a per-unit checklist of seven steps (electronics flashed, casing manufactured, casing assembled, electrodes assigned,
+mounting assigned, QC passed, packaged), each with a date and the account that did it. Design, reasoning and "As built":
+[`docs/production-checklist.md`](docs/production-checklist.md); read it before changing this.
+
+- **Rows, not columns:** `ProductionStep` (unique per unit+step; no row = not done), rules in `Manufacturing/ProductionChecklist.cs`.
+  Steps are *shown* in order but **any step can be done in any order**, on any unit (held, reserved and voided too). Every change
+  appends a `BciDeviceEvent` (`StepRecorded/Edited/Undone`, with `Step` and `WasPaired`). A unit with an active `AccountDevice`
+  needs an explicit confirmation for any change. Registration never looks at the checklist.
+- **Step 1** is written by `UnitProvisioning.ConfirmAsync` (`ProductionChecklist.RecordFlash`, source Quarry or Manual) and never moves.
+- **Manufacturer role only** (the `/Manufacturing` folder policy); Staff have no access for now. Pages: `Unit`, `MountingTypes`,
+  `ElectrodeSets`, `ElectrodeSet`. Times are UTC.
+- **Lists are retire-only** (`MountingType`, `ElectrodeSet`). An electrode set (assemblies, then parts, each with a count) is
+  **frozen** at its first assignment to a unit (`FrozenAt`, never cleared); a change is *New revision*, a copy. Versions are plain
+  typed labels with no behaviour; `(Name, Version)` of a set is unique.
+
 ## Firmware catalog
 
 Implemented server-side — Quarry flashes only builds from this catalog, never an arbitrary file on disk.

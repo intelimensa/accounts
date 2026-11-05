@@ -70,4 +70,6 @@ public class BciDevice
     public DateTimeOffset? ManufacturedAt { get; set; }
 
     public List<AccountDevice> AccountDevices { get; set; } = [];
+
+    public List<ProductionStep> ProductionSteps { get; set; } = [];
 }

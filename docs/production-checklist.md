@@ -1,6 +1,6 @@
 # Production checklist per unit (design draft)
 
-Status: **draft, nothing built.** Revision 7: six rounds of decisions from manufacturing are in (section 3). What is
+Status: **built** (see "As built" at the end; the design below is what was agreed). Revision 7: six rounds of decisions from manufacturing are in (section 3). What is
 still open is in section 4. The electrode set design is section 6. Replaces the earlier idea
 of a free-text "manufacturer notes" field on the unit, which is now a smaller part of this (section 8).
 
@@ -141,7 +141,7 @@ count 2 ("2 of"); if they differ, they are two assemblies, each with count 1.
 ```
 ElectrodeSet
   Id            guid
-  Name          string    1..100 chars; unique among active sets
+  Name          string    1..100 chars; (Name, Version) is unique among all sets, so a revision can share its name
   Description   string?   up to 1000 chars
   Version       string    1..32 chars, typed by the manufacturer (a code such as "A" or "1.0")
   PreviousId    guid?     the set this one was copied from, if it is a revision (set by New revision)
@@ -266,3 +266,25 @@ fills step 1 for existing units from `ManufacturedAt`. The migration also seeds 
 2. Settle small wording or limit changes.
 3. Build: model and migration, service rules with tests, the Units page and mounting list, then the electrode set tool and
    step-4 assignment, and the API only if wanted.
+
+## 13. As built
+
+Differences and details settled while building (the rest is as designed above):
+
+- **Where:** models in `Models/ProductionStep.cs`; rules in `Manufacturing/ProductionChecklist.cs`, `MountingTypeService.cs` and
+  `ElectrodeSetService.cs`; pages `Pages/Manufacturing/Unit`, `MountingTypes`, `ElectrodeSets`, `ElectrodeSet` (cards on
+  `/Manufacturing`, a checklist-progress column and step filters on `/Manufacturing/Units`, which can include units not issued
+  through the reserve flow so shipped units can be completed). Migration `ProductionChecklist`. Tests:
+  `Manufacturing/ProductionChecklistTests.cs`, `ProductionListsTests.cs`.
+- **Time is UTC** everywhere on these pages (entered, shown, labelled), so there is no browser time-zone guesswork.
+- **Source** has a third value, `Backfill`, for step 1 rows the migration made from `ManufacturedAt`; Quarry confirms are `Quarry`,
+  the manual confirm page records `Manual`.
+- **Step 4 and step 5 may be done with no value** (electrode set or mounting type "not specified"), like step 4 in decision 7, so
+  shipped units with unknown parts can be completed.
+- **`BciDeviceEvent`** gained `Step` and `WasPaired`. An edit's old and new values are written into the event's `Note`.
+- **A set's `FrozenAt`** is a stored timestamp set at its first assignment and never cleared, so undoing that assignment doesn't
+  thaw a set that history points at. A set that was assigned can still be copied by *New revision*; you type the new version
+  (the name and version pair must be new).
+- **Removing** an assembly or part from a set that is still editable is allowed (that is editing, not deleting the set).
+- **Not built:** reordering assemblies and parts (they keep the order they were added in), the API (decision in section 9), the
+  optional unit-level note (section 8).

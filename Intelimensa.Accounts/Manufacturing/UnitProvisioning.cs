@@ -275,7 +275,8 @@ public class UnitProvisioning(
     }
 
     public async Task<ProvisionResult<BciDevice>> ConfirmAsync(
-        string userId, string? serialNumber, string? registrationCode, string? firmwareVersion, string? bootloaderVersion)
+        string userId, string? serialNumber, string? registrationCode, string? firmwareVersion, string? bootloaderVersion,
+        ProductionStepSource source = ProductionStepSource.Quarry)
     {
         var unit = await db.BciDevices.FindBySerialAsync(serialNumber);
         if (unit is null)
@@ -317,6 +318,9 @@ public class UnitProvisioning(
             ApplyBootloader(unit, NormalizeBootloader(bootloaderVersion));
             AddEvent(db, unit, BciDeviceEventType.Confirmed, userId, now, before: before, after: firmware,
                 bootloaderBefore: bootloaderBefore, bootloaderAfter: unit.BootloaderVersion);
+            // The production checklist's first step, in the same save. Source says whether the station (Quarry, via
+            // the API) or a person on the manual page confirmed it; a rekey and re-confirm never moves it.
+            ProductionChecklist.RecordFlash(db, unit, userId, now, source);
 
             await db.SaveChangesAsync();
             logger.LogInformation("Unit {Serial} confirmed manufactured by {UserId}", unit.SerialNumber, userId);
