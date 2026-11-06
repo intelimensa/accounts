@@ -31,13 +31,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<ProductionStep> ProductionSteps => Set<ProductionStep>();
 
-    public DbSet<MountingType> MountingTypes => Set<MountingType>();
+    public DbSet<CatalogItem> CatalogItems => Set<CatalogItem>();
 
-    public DbSet<ElectrodeSet> ElectrodeSets => Set<ElectrodeSet>();
+    public DbSet<CatalogChild> CatalogChildren => Set<CatalogChild>();
 
-    public DbSet<ElectrodeAssembly> ElectrodeAssemblies => Set<ElectrodeAssembly>();
+    public DbSet<CatalogSupersession> CatalogSupersessions => Set<CatalogSupersession>();
 
-    public DbSet<ElectrodePart> ElectrodeParts => Set<ElectrodePart>();
+    public DbSet<CatalogChange> CatalogChanges => Set<CatalogChange>();
+
+    public DbSet<CatalogTag> CatalogTags => Set<CatalogTag>();
 
     public DbSet<Release> Releases => Set<Release>();
 
@@ -151,39 +153,48 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .HasForeignKey(p => p.BciDeviceId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(p => p.MountingType).WithMany().HasForeignKey(p => p.MountingTypeId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne(p => p.ElectrodeSet).WithMany().HasForeignKey(p => p.ElectrodeSetId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(p => p.Assembly).WithMany().HasForeignKey(p => p.AssemblyId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        builder.Entity<MountingType>(entity =>
+        builder.Entity<CatalogItem>(entity =>
         {
-            entity.HasIndex(m => m.Key).IsUnique();
+            // One part number space for parts and assemblies, compared without regard to case.
+            entity.Property(i => i.PartNo).UseCollation("NOCASE");
+            entity.HasIndex(i => i.PartNo).IsUnique();
+            entity.Property(i => i.Kind).HasConversion<int>();
         });
 
-        builder.Entity<ElectrodeSet>(entity =>
+        builder.Entity<CatalogChild>(entity =>
         {
-            entity.HasIndex(s => new { s.Name, s.Version }).IsUnique();
-            entity.HasIndex(s => s.PreviousId);
+            entity.HasKey(c => new { c.AssemblyId, c.ChildId });
+
+            entity.HasOne(c => c.Assembly).WithMany(a => a.Children).HasForeignKey(c => c.AssemblyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(c => c.Child).WithMany().HasForeignKey(c => c.ChildId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.ChildId);
         });
 
-        builder.Entity<ElectrodeAssembly>(entity =>
+        builder.Entity<CatalogSupersession>(entity =>
         {
-            entity.HasIndex(a => new { a.ElectrodeSetId, a.Name, a.Version }).IsUnique();
+            entity.HasKey(c => new { c.NewId, c.OldId });
 
-            entity.HasOne(a => a.ElectrodeSet)
-                .WithMany(s => s.Assemblies)
-                .HasForeignKey(a => a.ElectrodeSetId)
-                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(c => c.New).WithMany().HasForeignKey(c => c.NewId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(c => c.Old).WithMany().HasForeignKey(c => c.OldId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.OldId);
         });
 
-        builder.Entity<ElectrodePart>(entity =>
+        builder.Entity<CatalogTag>(entity =>
         {
-            entity.HasIndex(p => new { p.ElectrodeAssemblyId, p.Name, p.Version }).IsUnique();
+            entity.HasKey(t => new { t.ItemId, t.Tag });
+            entity.HasIndex(t => t.Tag);
 
-            entity.HasOne(p => p.ElectrodeAssembly)
-                .WithMany(a => a.Parts)
-                .HasForeignKey(p => p.ElectrodeAssemblyId)
-                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(t => t.Item).WithMany(i => i.Tags).HasForeignKey(t => t.ItemId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<CatalogChange>(entity =>
+        {
+            entity.HasIndex(c => c.ItemId);
+
+            entity.HasOne(c => c.Item).WithMany().HasForeignKey(c => c.ItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<BciDeviceEvent>(entity =>

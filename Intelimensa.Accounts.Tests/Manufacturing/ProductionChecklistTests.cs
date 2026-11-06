@@ -13,6 +13,7 @@ public class ProductionChecklistTests : IDisposable
     private readonly ApplicationDbContext _db;
     private readonly TestClock _clock = new(new DateTimeOffset(2026, 11, 5, 12, 0, 0, TimeSpan.Zero));
     private readonly ProductionChecklist _checklist;
+    private readonly CatalogService _catalog;
     private readonly BciDevice _unit;
 
     public ProductionChecklistTests()
@@ -22,7 +23,8 @@ public class ProductionChecklistTests : IDisposable
         _db.Database.EnsureCreated();
         _db.Users.Add(new ApplicationUser { Id = "m", UserName = "m" });
         _unit = NewUnit("MSV2G0000011", BciDeviceStatus.Reserved);
-        _checklist = new ProductionChecklist(_db, _clock);
+        _catalog = new CatalogService(_db, _clock);
+        _checklist = new ProductionChecklist(_db, _clock, _catalog, Microsoft.Extensions.Options.Options.Create(new ManufacturingOptions()));
     }
 
     public void Dispose()
@@ -39,8 +41,17 @@ public class ProductionChecklistTests : IDisposable
         return unit;
     }
 
-    private static StepInput Input(DateTimeOffset? at = null, string? note = null, int? mounting = null, Guid? set = null) =>
-        new(at, note, mounting, set);
+    private static StepInput Input(DateTimeOffset? at = null, string? note = null, Guid? assembly = null) =>
+        new(at, note, assembly);
+
+    /// <summary>An assembly with one part in it, tagged for both assembly steps: assignable to a unit.</summary>
+    private async Task<CatalogItem> NewAssemblyAsync(string partNo, string tags = "electrode-set,mounting-clip")
+    {
+        var part = (await _catalog.CreateAsync("m", CatalogKind.Part, partNo + "-P", "Part " + partNo, null, null)).Value!;
+        var assembly = (await _catalog.CreateAsync("m", CatalogKind.Assembly, partNo, "Assembly " + partNo, null, null, tags: tags)).Value!;
+        await _catalog.AddChildAsync("m", assembly.Id, part.Id, 1);
+        return assembly;
+    }
 
     private Task<ChecklistResult<ProductionStep>> Mark(ProductionStepType step, StepInput? input = null, bool confirm = false, string? serial = null) =>
         _checklist.MarkDoneAsync("m", serial ?? _unit.SerialNumber, step, input ?? Input(), confirm);
@@ -156,51 +167,173 @@ public class ProductionChecklistTests : IDisposable
     // ---- values ----------------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Only_the_mounting_step_takes_a_mounting_type_and_only_electrodes_take_a_set()
+    public async Task Only_steps_four_and_five_take_an_assembly()
     {
-        var mounting = new MountingType { Key = "k", DisplayName = "K" };
-        _db.MountingTypes.Add(mounting);
-        _db.SaveChanges();
-
-        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.QcPassed, Input(mounting: mounting.Id))).Status);
-        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.QcPassed, Input(set: Guid.NewGuid()))).Status);
-        Assert.True((await Mark(ProductionStepType.MountingAssigned, Input(mounting: mounting.Id))).IsOk);
+        var assembly = await NewAssemblyAsync("A1");
+        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.QcPassed, Input(assembly: assembly.Id))).Status);
+        Assert.True((await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: assembly.Id))).IsOk);
+        Assert.True((await Mark(ProductionStepType.MountingAssigned, Input(assembly: assembly.Id))).IsOk);
+        Assert.Equal(ChecklistStatus.BadRequest,
+            (await Mark(ProductionStepType.QcPassed, Input(assembly: Guid.NewGuid()))).Status);
     }
 
     [Fact]
-    public async Task A_retired_mounting_type_cannot_be_picked_but_stays_on_a_unit_that_has_it()
+    public async Task A_part_an_unknown_id_an_empty_or_a_retired_assembly_cannot_be_assigned()
     {
-        var mounting = new MountingType { Key = "k", DisplayName = "K" };
-        _db.MountingTypes.Add(mounting);
-        _db.SaveChanges();
-        await Mark(ProductionStepType.MountingAssigned, Input(mounting: mounting.Id));
+        var part = (await _catalog.CreateAsync("m", CatalogKind.Part, "P1", "Part", null, null)).Value!;
+        var empty = (await _catalog.CreateAsync("m", CatalogKind.Assembly, "E1", "Empty", null, null, tags: "electrode-set")).Value!;
+        var retired = await NewAssemblyAsync("R1");
+        await _catalog.RetireAsync("m", retired.Id);
 
-        mounting.RetiredAt = _clock.GetUtcNow();
-        _db.SaveChanges();
+        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: part.Id))).Status);
+        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: empty.Id))).Status);
+        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: retired.Id))).Status);
+        Assert.Equal(ChecklistStatus.BadRequest, (await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: Guid.NewGuid()))).Status);
+        // With no assembly at all the step can still be done (a shipped unit whose parts are unknown).
+        Assert.True((await Mark(ProductionStepType.ElectrodesAssigned)).IsOk);
+    }
+
+    [Fact]
+    public async Task A_unit_that_already_carries_an_assembly_can_keep_it_after_it_is_retired()
+    {
+        var assembly = await NewAssemblyAsync("A1");
+        await Mark(ProductionStepType.MountingAssigned, Input(assembly: assembly.Id));
+        await _catalog.RetireAsync("m", assembly.Id);
+
+        var edit = await _checklist.EditAsync("m", _unit.SerialNumber, ProductionStepType.MountingAssigned,
+            Input(note: "checked", assembly: assembly.Id), false);
+        Assert.True(edit.IsOk);
 
         var other = NewUnit("MSV2G0000037", BciDeviceStatus.Reserved);
         Assert.Equal(ChecklistStatus.BadRequest,
-            (await Mark(ProductionStepType.MountingAssigned, Input(mounting: mounting.Id), serial: other.SerialNumber)).Status);
-
-        // The unit that already carries it can still edit other fields of the step.
-        var edit = await _checklist.EditAsync("m", _unit.SerialNumber, ProductionStepType.MountingAssigned,
-            Input(note: "checked", mounting: mounting.Id), false);
-        Assert.True(edit.IsOk);
+            (await Mark(ProductionStepType.MountingAssigned, Input(assembly: assembly.Id), serial: other.SerialNumber)).Status);
     }
 
     [Fact]
-    public async Task Assigning_an_electrode_set_freezes_it_for_good()
+    public async Task Assigning_an_assembly_freezes_it_for_good()
     {
-        var sets = new ElectrodeSetService(_db, _clock);
-        var set = (await sets.CreateAsync("m", "Standard", "A", null)).Value!;
-        Assert.Null(set.FrozenAt);
+        var assembly = await NewAssemblyAsync("A1");
+        Assert.Null((await _db.CatalogItems.FindAsync(assembly.Id))!.FrozenAt);
 
-        await Mark(ProductionStepType.ElectrodesAssigned, Input(set: set.Id));
-        Assert.NotNull((await _db.ElectrodeSets.FindAsync(set.Id))!.FrozenAt);
+        await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: assembly.Id));
+        Assert.NotNull((await _db.CatalogItems.FindAsync(assembly.Id))!.FrozenAt);
 
         // Undoing the assignment doesn't thaw it: the history still points at it.
         await _checklist.UndoAsync("m", _unit.SerialNumber, ProductionStepType.ElectrodesAssigned, null, false);
-        Assert.NotNull((await _db.ElectrodeSets.FindAsync(set.Id))!.FrozenAt);
+        Assert.NotNull((await _db.CatalogItems.FindAsync(assembly.Id))!.FrozenAt);
+
+        // And its contents can no longer be edited.
+        var part = (await _catalog.CreateAsync("m", CatalogKind.Part, "P9", "Extra", null, null)).Value!;
+        Assert.Equal(ChecklistStatus.Conflict, (await _catalog.AddChildAsync("m", assembly.Id, part.Id, 1)).Status);
+    }
+
+    [Fact]
+    public async Task Assigning_a_superseded_assembly_warns_and_names_the_newest_revision_but_saves()
+    {
+        var old = await NewAssemblyAsync("A1");
+        var newer = await NewAssemblyAsync("A2");
+        var newest = await NewAssemblyAsync("A3");
+        await _catalog.AddSupersessionAsync("m", newer.Id, old.Id);
+        await _catalog.AddSupersessionAsync("m", newest.Id, newer.Id);
+
+        var result = await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: old.Id));
+        Assert.True(result.IsOk);
+        var warning = Assert.Single(result.Warnings!);
+        Assert.Contains("A3", warning);
+        Assert.DoesNotContain("A2", warning);
+    }
+
+    [Fact]
+    public async Task Changing_the_assembly_of_a_step_records_old_and_new_part_numbers()
+    {
+        var first = await NewAssemblyAsync("A1");
+        var second = await NewAssemblyAsync("A2");
+        await Mark(ProductionStepType.MountingAssigned, Input(assembly: first.Id));
+
+        await _checklist.EditAsync("m", _unit.SerialNumber, ProductionStepType.MountingAssigned, Input(assembly: second.Id), false);
+
+        var edited = (await _checklist.HistoryAsync(_unit.Id)).Single(e => e.Type == BciDeviceEventType.StepEdited);
+        Assert.Contains("assembly A1 to A2", edited.Note);
+        Assert.NotNull((await _db.CatalogItems.FindAsync(second.Id))!.FrozenAt);
+    }
+
+    // ---- tags: which assemblies a step accepts ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_step_only_accepts_assemblies_with_the_tag_it_requires()
+    {
+        var electrodes = await NewAssemblyAsync("E1", tags: "electrode-set");
+        var clip = await NewAssemblyAsync("C1", tags: "mounting-clip");
+        var untagged = await NewAssemblyAsync("U1", tags: "");
+
+        Assert.True((await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: electrodes.Id))).IsOk);
+        Assert.True((await Mark(ProductionStepType.MountingAssigned, Input(assembly: clip.Id))).IsOk);
+
+        var other = NewUnit("MSV2G0000037", BciDeviceStatus.Reserved);
+        var wrongForElectrodes = await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: clip.Id), serial: other.SerialNumber);
+        Assert.Equal(ChecklistStatus.BadRequest, wrongForElectrodes.Status);
+        Assert.Contains("electrode-set", wrongForElectrodes.Message);
+        Assert.Equal(ChecklistStatus.BadRequest,
+            (await Mark(ProductionStepType.MountingAssigned, Input(assembly: electrodes.Id), serial: other.SerialNumber)).Status);
+        Assert.Equal(ChecklistStatus.BadRequest,
+            (await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: untagged.Id), serial: other.SerialNumber)).Status);
+    }
+
+    [Fact]
+    public async Task The_tag_is_required_when_editing_a_step_to_another_assembly_too()
+    {
+        var first = await NewAssemblyAsync("E1", tags: "electrode-set");
+        var wrong = await NewAssemblyAsync("W1", tags: "something-else");
+        await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: first.Id));
+
+        var edit = await _checklist.EditAsync("m", _unit.SerialNumber, ProductionStepType.ElectrodesAssigned, Input(assembly: wrong.Id), false);
+        Assert.Equal(ChecklistStatus.BadRequest, edit.Status);
+    }
+
+    [Fact]
+    public async Task Assigning_locks_the_required_tag_for_good_but_other_tags_stay_editable()
+    {
+        var assembly = await NewAssemblyAsync("E1", tags: "electrode-set,left-hand,draft-note");
+        await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: assembly.Id));
+
+        var locked = await _catalog.SetTagsAsync("m", assembly.Id, "left-hand");
+        Assert.Equal(ChecklistStatus.Conflict, locked.Status);
+        Assert.Contains("electrode-set", locked.Message);
+
+        // Adding, and removing the tags nothing relied on, is fine.
+        Assert.True((await _catalog.SetTagsAsync("m", assembly.Id, "electrode-set,right-hand")).IsOk);
+
+        // Undoing the assignment does not thaw it: history still points at the assembly.
+        await _checklist.UndoAsync("m", _unit.SerialNumber, ProductionStepType.ElectrodesAssigned, null, false);
+        Assert.Equal(ChecklistStatus.Conflict, (await _catalog.SetTagsAsync("m", assembly.Id, "right-hand")).Status);
+    }
+
+    [Fact]
+    public async Task Only_the_tag_a_step_relied_on_is_locked_not_the_assemblys_other_uses()
+    {
+        // The same assembly carries both step tags and is assigned at the mounting step only.
+        var assembly = await NewAssemblyAsync("B1", tags: "electrode-set,mounting-clip");
+        await Mark(ProductionStepType.MountingAssigned, Input(assembly: assembly.Id));
+
+        Assert.True((await _catalog.SetTagsAsync("m", assembly.Id, "mounting-clip")).IsOk); // electrode-set was never relied on
+        Assert.Equal(ChecklistStatus.Conflict, (await _catalog.SetTagsAsync("m", assembly.Id, "")).Status);
+    }
+
+    [Fact]
+    public async Task A_unit_keeps_an_assembly_whose_tag_is_unchanged_and_requirements_can_be_switched_off()
+    {
+        var assembly = await NewAssemblyAsync("E1", tags: "electrode-set");
+        await Mark(ProductionStepType.ElectrodesAssigned, Input(assembly: assembly.Id));
+        var edit = await _checklist.EditAsync("m", _unit.SerialNumber, ProductionStepType.ElectrodesAssigned, Input(note: "n", assembly: assembly.Id), false);
+        Assert.True(edit.IsOk);
+
+        // With no tag configured for a step, any assembly is accepted there.
+        var open = new ProductionChecklist(_db, _clock, _catalog, Microsoft.Extensions.Options.Options.Create(
+            new ManufacturingOptions { StepTags = { ["MountingAssigned"] = "" } }));
+        Assert.Null(open.RequiredTag(ProductionStepType.MountingAssigned));
+        Assert.Equal("electrode-set", open.RequiredTag(ProductionStepType.ElectrodesAssigned));
+        var plain = await NewAssemblyAsync("P1", tags: "");
+        Assert.True((await open.MarkDoneAsync("m", _unit.SerialNumber, ProductionStepType.MountingAssigned, Input(assembly: plain.Id), false)).IsOk);
     }
 
     [Fact]

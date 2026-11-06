@@ -289,19 +289,27 @@ Implemented server-side; the station app (MindStoneQuarry) and firmware side liv
 ## Production checklist
 
 Implemented: a per-unit checklist of seven steps (electronics flashed, casing manufactured, casing assembled, electrodes assigned,
-mounting assigned, QC passed, packaged), each with a date and the account that did it. Design, reasoning and "As built":
+mounting assigned, QC passed, packaged), each with a date and the account that did it, and a **parts and assemblies catalog** that
+steps 4 and 5 point into. Design, reasoning and "As built":
 [`docs/production-checklist.md`](docs/production-checklist.md); read it before changing this.
 
-- **Rows, not columns:** `ProductionStep` (unique per unit+step; no row = not done), rules in `Manufacturing/ProductionChecklist.cs`.
+- **Checklist rows, not columns:** `ProductionStep` (unique per unit+step; no row = not done), rules in `Manufacturing/ProductionChecklist.cs`.
   Steps are *shown* in order but **any step can be done in any order**, on any unit (held, reserved and voided too). Every change
   appends a `BciDeviceEvent` (`StepRecorded/Edited/Undone`, with `Step` and `WasPaired`). A unit with an active `AccountDevice`
   needs an explicit confirmation for any change. Registration never looks at the checklist.
 - **Step 1** is written by `UnitProvisioning.ConfirmAsync` (`ProductionChecklist.RecordFlash`, source Quarry or Manual) and never moves.
-- **Manufacturer role only** (the `/Manufacturing` folder policy); Staff have no access for now. Pages: `Unit`, `MountingTypes`,
-  `ElectrodeSets`, `ElectrodeSet`. Times are UTC.
-- **Lists are retire-only** (`MountingType`, `ElectrodeSet`). An electrode set (assemblies, then parts, each with a count) is
-  **frozen** at its first assignment to a unit (`FrozenAt`, never cleared); a change is *New revision*, a copy. Versions are plain
-  typed labels with no behaviour; `(Name, Version)` of a set is unique.
+- **Steps 4 and 5** each reference one catalog assembly (optional). Assigning freezes it. No snapshot is needed: see the next point.
+- **The catalog** (`CatalogItem`: a part or an assembly, one table so one part-number space, `NOCASE`): **a part number never
+  changes meaning.** A revision gets a new number and a `CatalogSupersession` record; an assembly's contents (`CatalogChild`, with
+  counts) are **frozen at the first reference** (`FrozenAt`, never cleared: listed by another assembly, or assigned to a unit) and a
+  change is "Copy as new part number". Name, description and reference stay editable with a history (`CatalogChange`). Nothing is
+  deleted, only retired. Rules live in `Manufacturing/CatalogService.cs`; don't re-implement them in a page.
+- **Tags** (`CatalogTag`, comma-separated in the UI and XML): filter the catalog, and **steps 4 and 5 accept only assemblies carrying the
+  tag set in `Manufacturing:StepTags`** (defaults `electrode-set`, `mounting-clip`). The tag a unit's step relied on is **locked** on that
+  assembly (`FrozenAt`, never cleared); other tags stay editable. Same service: `CatalogService.SetTagsAsync`.
+- **XML** (`Manufacturing/CatalogXml.cs`, `/Manufacturing/CatalogImport`): upsert by part number, never deletes, validated whole and
+  applied all or nothing with line-numbered errors; unknown attributes are errors; DTDs prohibited. Format in the doc, section 7.
+- **Manufacturer role only** (the `/Manufacturing` folder policy); Staff have no access for now. Times are UTC.
 
 ## Firmware catalog
 

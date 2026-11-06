@@ -1,0 +1,128 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.CatalogModel
+@using Intelimensa.Accounts.Manufacturing
+@using Intelimensa.Accounts.Models
+@{
+    ViewData["Title"] = "Manufacturing: Parts and assemblies";
+}
+
+<h1 class="h3 mb-3">Parts and assemblies</h1>
+<partial name="_ProductionMessages" model="Model" />
+
+<p class="text-muted small">
+    Every part and assembly has a part number that never changes meaning. A revision gets a new number and says which one it
+    supersedes. An assembly's contents freeze once it is used (listed in another assembly, or assigned to a unit).
+    <a asp-page="/Manufacturing/CatalogImport">Import or export as XML</a>.
+</p>
+
+<div class="feature-card mb-4">
+    <form method="post" asp-page-handler="Create" class="row g-2">
+        <div class="col-sm-3 col-md-2">
+            <label class="form-label small" for="n-kind">New</label>
+            <select id="n-kind" name="kind" class="form-select">
+                <option value="part">Part</option>
+                <option value="assembly">Assembly</option>
+            </select>
+        </div>
+        <div class="col-sm-4 col-md-3">
+            <label class="form-label small" for="n-no">Part number</label>
+            <input id="n-no" name="partNo" class="form-control font-monospace" maxlength="@PartNumber.MaxLength" required />
+        </div>
+        <div class="col-sm-5 col-md-4">
+            <label class="form-label small" for="n-name">Name</label>
+            <input id="n-name" name="name" class="form-control" maxlength="@CatalogService.MaxNameLength" required />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small" for="n-sup">Supersedes <span class="text-muted">(part numbers, opt.)</span></label>
+            <input id="n-sup" name="supersedes" class="form-control font-monospace" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small" for="n-tags">Tags <span class="text-muted">(comma-separated, opt.)</span></label>
+            <input id="n-tags" name="tags" class="form-control font-monospace" placeholder="e.g. electrode-set" />
+        </div>
+        <div class="col-md-8">
+            <label class="form-label small" for="n-desc">Description <span class="text-muted">(opt.)</span></label>
+            <input id="n-desc" name="description" class="form-control" maxlength="@CatalogService.MaxDescriptionLength" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small" for="n-ref">Reference <span class="text-muted">(opt., e.g. CAD file)</span></label>
+            <input id="n-ref" name="reference" class="form-control" maxlength="@CatalogService.MaxReferenceLength" />
+        </div>
+        <div class="col-md-2 align-self-end"><button type="submit" class="btn btn-ia-outline">Issue</button></div>
+    </form>
+</div>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-sm-5 col-md-4">
+        <label class="form-label small" for="q">Search</label>
+        <input id="q" name="q" value="@Model.Q" class="form-control" placeholder="Part number, name or description" />
+    </div>
+    <div class="col-sm-3 col-md-2">
+        <label class="form-label small" for="k">Show</label>
+        <select id="k" name="kind" class="form-select">
+            <option value="">Both</option>
+            <option value="part" selected="@(Model.Kind == "part")">Parts</option>
+            <option value="assembly" selected="@(Model.Kind == "assembly")">Assemblies</option>
+        </select>
+    </div>
+    <div class="col-sm-4 col-md-3">
+        <label class="form-label small" for="t">Tags <span class="text-muted">(all of)</span></label>
+        <input id="t" name="tags" value="@Model.Tags" class="form-control font-monospace" placeholder="e.g. electrode-set" />
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-ia-outline btn-sm">Search</button></div>
+    <div class="col-auto small text-muted align-self-center">@Model.Rows.Count of @Model.Total shown</div>
+</form>
+@if (Model.KnownTags.Count > 0)
+{
+    <p class="small mb-3">
+        <span class="text-muted">Tags in use:</span>
+        @foreach (var (tag, items) in Model.KnownTags)
+        {
+            <a asp-page="/Manufacturing/Catalog" asp-route-tags="@tag" asp-route-kind="@Model.Kind" asp-route-q="@Model.Q"
+               class="badge text-bg-light border text-decoration-none me-1">@tag <span class="text-muted">@items</span></a>
+        }
+    </p>
+}
+
+<div class="feature-card">
+    @if (Model.Rows.Count == 0)
+    {
+        <p class="text-muted mb-0">Nothing matches.</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>Part number</th><th>Kind</th><th>Name</th><th>Tags</th><th>Status</th><th class="text-end">Lines</th><th class="text-end">Used in</th></tr></thead>
+            <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                var item = row.Item;
+                <tr class="@(item.RetiredAt is null ? "" : "text-muted")">
+                    <td class="font-monospace"><a asp-page="/Manufacturing/CatalogItem" asp-route-id="@item.Id">@item.PartNo</a></td>
+                    <td>@item.Kind</td>
+                    <td>@item.Name <span class="small text-muted">@item.Description</span></td>
+                    <td>
+                        @foreach (var tag in row.Tags)
+                        {
+                            <a asp-page="/Manufacturing/Catalog" asp-route-tags="@tag.Tag" class="badge text-bg-light border text-decoration-none">@tag.Tag</a>
+                        }
+                    </td>
+                    <td>
+                        @if (item.RetiredAt is not null) { <span class="badge text-bg-secondary">retired</span> }
+                        @if (row.Superseded) { <span class="badge text-bg-warning">superseded</span> }
+                        @if (item.IsAssembly)
+                        {
+                            if (item.FrozenAt is not null) { <span class="badge text-bg-info">frozen</span> }
+                            else { <span class="badge text-bg-light border">draft</span> }
+                        }
+                    </td>
+                    <td class="text-end">@(item.IsAssembly ? row.Lines.ToString() : "")</td>
+                    <td class="text-end">@row.UsedBy</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+<p class="mt-3"><a asp-page="/Manufacturing/Index">&larr; Back to manufacturing</a></p>

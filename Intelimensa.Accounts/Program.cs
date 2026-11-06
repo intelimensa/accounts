@@ -63,8 +63,8 @@ builder.Services.AddSingleton<InstallNonces>();
 builder.Services.AddScoped<UnitProvisioning>();
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ProductionChecklist>();
-builder.Services.AddScoped<MountingTypeService>();
-builder.Services.AddScoped<ElectrodeSetService>();
+builder.Services.AddScoped<CatalogService>();
+builder.Services.AddScoped<CatalogXml>();
 builder.Services.AddOptions<ManufacturingOptions>()
     .Bind(builder.Configuration.GetSection("Manufacturing"))
     .ValidateOnStart();

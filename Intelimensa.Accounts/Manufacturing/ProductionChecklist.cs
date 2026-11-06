@@ -1,6 +1,7 @@
 using Intelimensa.Accounts.Data;
 using Intelimensa.Accounts.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Intelimensa.Accounts.Manufacturing;
 
@@ -21,8 +22,7 @@ public record ChecklistResult<T>(ChecklistStatus Status, T? Value, string? Messa
 }
 
 /// <summary>What the caller wants a step to hold. Null fields are "not specified".</summary>
-public record StepInput(
-    DateTimeOffset? PerformedAt, string? Note, int? MountingTypeId, Guid? ElectrodeSetId);
+public record StepInput(DateTimeOffset? PerformedAt, string? Note, Guid? AssemblyId);
 
 /// <summary>
 /// A unit's production checklist (docs/production-checklist.md): mark a step done, edit it, undo it. Any
@@ -31,7 +31,8 @@ public record StepInput(
 /// is paired with a participant needs an explicit confirmation. Every change appends a
 /// <see cref="BciDeviceEvent"/> in the same save. Registration never looks at any of this.
 /// </summary>
-public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
+public class ProductionChecklist(
+    ApplicationDbContext db, TimeProvider clock, CatalogService catalog, IOptions<ManufacturingOptions> options)
 {
     public const int MaxNoteLength = 1000;
 
@@ -90,7 +91,7 @@ public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
             return null;
 
         var steps = await db.ProductionSteps
-            .Include(s => s.MountingType).Include(s => s.ElectrodeSet)
+            .Include(s => s.Assembly)
             .Where(s => s.BciDeviceId == unit.Id).ToListAsync();
         var paired = await IsPairedAsync(unit.Id);
         return new UnitChecklist(unit, steps.OrderBy(s => s.Step).ToList(), paired);
@@ -126,16 +127,17 @@ public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
             RecordedAt = now,
             PerformedByUserId = userId,
             Source = ProductionStepSource.Manual,
-            MountingTypeId = input.MountingTypeId,
-            ElectrodeSetId = input.ElectrodeSetId,
+            AssemblyId = input.AssemblyId,
             Note = Clean(input.Note),
         };
         db.ProductionSteps.Add(row);
-        await FreezeSetAsync(input.ElectrodeSetId, now);
-        AddEvent(unit, BciDeviceEventType.StepRecorded, step, userId, now, loaded.Paired, Clean(input.Note));
+        if (input.AssemblyId is { } assemblyId)
+            await FreezeAssemblyAsync(assemblyId, step);
+        var detail = input.AssemblyId is null ? Clean(input.Note) : $"{await AssemblyNameAsync(input.AssemblyId)}{(Clean(input.Note) is { } n ? "; " + n : "")}";
+        AddEvent(unit, BciDeviceEventType.StepRecorded, step, userId, now, loaded.Paired, detail);
         await db.SaveChangesAsync();
 
-        return new(ChecklistStatus.Ok, row, Warnings: await WarningsAsync(unit.Id, step, performedAt, now));
+        return new(ChecklistStatus.Ok, row, Warnings: await WarningsAsync(unit.Id, step, performedAt, now, input.AssemblyId));
     }
 
     public async Task<ChecklistResult<ProductionStep>> EditAsync(
@@ -167,16 +169,12 @@ public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
             changes.Add("note changed");
             row.Note = note;
         }
-        if (step == ProductionStepType.MountingAssigned && input.MountingTypeId != row.MountingTypeId)
+        if (IsAssemblyStep(step) && input.AssemblyId != row.AssemblyId)
         {
-            changes.Add($"mounting {await MountingNameAsync(row.MountingTypeId)} to {await MountingNameAsync(input.MountingTypeId)}");
-            row.MountingTypeId = input.MountingTypeId;
-        }
-        if (step == ProductionStepType.ElectrodesAssigned && input.ElectrodeSetId != row.ElectrodeSetId)
-        {
-            changes.Add($"electrode set {await SetNameAsync(row.ElectrodeSetId)} to {await SetNameAsync(input.ElectrodeSetId)}");
-            row.ElectrodeSetId = input.ElectrodeSetId;
-            await FreezeSetAsync(input.ElectrodeSetId, now);
+            changes.Add($"assembly {await AssemblyNameAsync(row.AssemblyId)} to {await AssemblyNameAsync(input.AssemblyId)}");
+            row.AssemblyId = input.AssemblyId;
+            if (input.AssemblyId is { } assemblyId)
+                await FreezeAssemblyAsync(assemblyId, step);
         }
 
         if (changes.Count > 0)
@@ -185,7 +183,7 @@ public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
             await db.SaveChangesAsync();
         }
 
-        return new(ChecklistStatus.Ok, row, Warnings: await WarningsAsync(unit.Id, step, performedAt, now));
+        return new(ChecklistStatus.Ok, row, Warnings: await WarningsAsync(unit.Id, step, performedAt, now, row.AssemblyId));
     }
 
     public async Task<ChecklistResult<ProductionStep>> UndoAsync(
@@ -231,50 +229,64 @@ public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
     private Task<bool> IsPairedAsync(Guid unitId) =>
         db.AccountDevices.AnyAsync(a => a.BciDeviceId == unitId && a.UnassignedAt == null);
 
-    /// <summary>An error message, or null. Only the step that carries a value may be given one.</summary>
+    /// <summary>
+    /// The tag an assembly must carry to be assigned at this step (<c>Manufacturing:StepTags</c>), or null if there is no requirement.
+    /// </summary>
+    public string? RequiredTag(ProductionStepType step) =>
+        options.Value.StepTags.TryGetValue(step.ToString(), out var tag) && !string.IsNullOrWhiteSpace(tag)
+            ? tag.Trim().ToLowerInvariant()
+            : null;
+
+    /// <summary>
+    /// A unit is being assigned an assembly: its contents freeze, and so does the tag the step required (the assignment relied on
+    /// it). The caller saves.
+    /// </summary>
+    private async Task FreezeAssemblyAsync(Guid assemblyId, ProductionStepType step)
+    {
+        await catalog.FreezeAsync(assemblyId);
+        if (RequiredTag(step) is { } required)
+            await catalog.FreezeTagAsync(assemblyId, required);
+    }
+
+    /// <summary>Steps 4 and 5 carry a catalog assembly.</summary>
+    public static bool IsAssemblyStep(ProductionStepType step) =>
+        step is ProductionStepType.ElectrodesAssigned or ProductionStepType.MountingAssigned;
+
+    /// <summary>An error message, or null. Only steps 4 and 5 take an assembly: not retired (unless it is the one already there) and not empty.</summary>
     private async Task<string?> ValidateAsync(ProductionStepType step, StepInput input, ProductionStep? existing)
     {
         if (NoteError(input.Note) is { } noteError)
             return noteError;
-        if (input.MountingTypeId is not null && step != ProductionStepType.MountingAssigned)
-            return "Only the mounting step takes a mounting type.";
-        if (input.ElectrodeSetId is not null && step != ProductionStepType.ElectrodesAssigned)
-            return "Only the electrodes step takes an electrode set.";
+        if (input.AssemblyId is not { } assemblyId)
+            return null;
+        if (!IsAssemblyStep(step))
+            return "Only the electrodes and mounting steps take an assembly.";
 
-        if (input.MountingTypeId is { } mountingId)
-        {
-            var type = await db.MountingTypes.FindAsync(mountingId);
-            if (type is null)
-                return "Unknown mounting type.";
-            if (type.RetiredAt is not null && existing?.MountingTypeId != mountingId)
-                return "That mounting type is retired and can't be picked again.";
-        }
-
-        if (input.ElectrodeSetId is { } setId)
-        {
-            var set = await db.ElectrodeSets.FindAsync(setId);
-            if (set is null)
-                return "Unknown electrode set.";
-            if (set.RetiredAt is not null && existing?.ElectrodeSetId != setId)
-                return "That electrode set is retired and can't be picked again.";
-        }
-
+        var item = await db.CatalogItems.FindAsync(assemblyId);
+        if (item is not { Kind: CatalogKind.Assembly })
+            return "Unknown assembly.";
+        if (item.RetiredAt is not null && existing?.AssemblyId != assemblyId)
+            return $"{item.PartNo} is retired and can't be picked again.";
+        if (existing?.AssemblyId != assemblyId && !await db.CatalogChildren.AnyAsync(c => c.AssemblyId == assemblyId))
+            return $"{item.PartNo} has no contents yet; add its parts first.";
+        // The step's required tag (a unit that already carries this assembly keeps it, whatever its tags are now).
+        if (RequiredTag(step) is { } required && existing?.AssemblyId != assemblyId
+            && !await db.CatalogTags.AnyAsync(t => t.ItemId == assemblyId && t.Tag == required))
+            return $"{item.PartNo} doesn't have the tag '{required}', which {Title(step).ToLowerInvariant()} requires.";
         return null;
     }
 
-    private async Task FreezeSetAsync(Guid? setId, DateTimeOffset now)
-    {
-        if (setId is null)
-            return;
-        var set = await db.ElectrodeSets.FindAsync(setId.Value);
-        if (set is { FrozenAt: null })
-            set.FrozenAt = now;
-    }
-
     /// <summary>Soft hints that never block: a date in the future, Packaged without QC.</summary>
-    private async Task<IReadOnlyList<string>> WarningsAsync(Guid unitId, ProductionStepType step, DateTimeOffset performedAt, DateTimeOffset now)
+    private async Task<IReadOnlyList<string>> WarningsAsync(
+        Guid unitId, ProductionStepType step, DateTimeOffset performedAt, DateTimeOffset now, Guid? assemblyId)
     {
         var warnings = new List<string>();
+        if (assemblyId is { } id)
+        {
+            var newest = (await catalog.LoadGraphAsync()).Newest(id);
+            if (newest.Count > 0)
+                warnings.Add($"{await AssemblyNameAsync(id)} has been superseded; a newer revision exists: {string.Join(", ", newest.Select(i => i.PartNo))}.");
+        }
         if (performedAt > now + FutureTolerance)
             warnings.Add($"{Title(step)} is dated in the future ({Format(performedAt)}).");
         if (step == ProductionStepType.Packaged
@@ -295,11 +307,8 @@ public class ProductionChecklist(ApplicationDbContext db, TimeProvider clock)
             Note = note,
         });
 
-    private async Task<string> MountingNameAsync(int? id) =>
-        id is null ? "(none)" : (await db.MountingTypes.FindAsync(id.Value))?.DisplayName ?? "(unknown)";
-
-    private async Task<string> SetNameAsync(Guid? id) =>
-        id is null ? "(none)" : (await db.ElectrodeSets.FindAsync(id.Value)) is { } s ? $"{s.Name} {s.Version}" : "(unknown)";
+    private async Task<string> AssemblyNameAsync(Guid? id) =>
+        id is null ? "(none)" : (await db.CatalogItems.FindAsync(id.Value)) is { } item ? item.PartNo : "(unknown)";
 
     internal static string Format(DateTimeOffset when) => when.UtcDateTime.ToString("yyyy-MM-dd HH:mm") + " UTC";
 

@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Intelimensa.Accounts.Pages.Manufacturing;
 
 /// <summary>One unit's production checklist: mark steps done, edit them, undo them.</summary>
-public class UnitModel(UnitProvisioning provisioning, ProductionChecklist checklist, ApplicationDbContext db)
+public class UnitModel(UnitProvisioning provisioning, ProductionChecklist checklist, CatalogService catalog, ApplicationDbContext db)
     : ProductionPageModel(provisioning, db)
 {
     [BindProperty(SupportsGet = true)]
@@ -19,9 +19,27 @@ public class UnitModel(UnitProvisioning provisioning, ProductionChecklist checkl
 
     public Dictionary<string, string> Emails { get; private set; } = [];
 
-    public List<MountingType> MountingOptions { get; private set; } = [];
+    /// <summary>
+    /// Active assemblies with contents, for the picker's suggestions (typing a part number works too), narrowed to the
+    /// tag the step requires (<c>Manufacturing:StepTags</c>).
+    /// </summary>
+    public List<CatalogItem> AssemblyOptionsFor(ProductionStepType step)
+    {
+        var required = checklist.RequiredTag(step);
+        return Graph.Items.Values
+            .Where(i => i.IsAssembly && i.RetiredAt is null && Graph.ChildrenOf(i.Id).Count > 0
+                && (required is null || Graph.HasTag(i.Id, required)))
+            .OrderBy(i => i.PartNo, StringComparer.OrdinalIgnoreCase).ToList();
+    }
 
-    public List<ElectrodeSet> ElectrodeOptions { get; private set; } = [];
+    public string? RequiredTag(ProductionStepType step) => checklist.RequiredTag(step);
+
+    public CatalogGraph Graph { get; private set; } = new([], [], []);
+
+    /// <summary>The expanded tree of the assembly each of steps 4 and 5 carries.</summary>
+    public Dictionary<Guid, TreeNode> Trees { get; private set; } = [];
+
+    public bool IsSuperseded(Guid id) => Graph.IsSuperseded(id);
 
     public string Now => ProductionChecklistFormat.Input(DateTimeOffset.UtcNow);
 
@@ -43,7 +61,7 @@ public class UnitModel(UnitProvisioning provisioning, ProductionChecklist checkl
             return await FailAsync(result.Message);
 
         StatusMessage = $"{ProductionChecklist.Title(step)} undone.";
-        return RedirectToPage(new { serial = Serial });
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: new { serial = Serial }, fragment: $"row-{(int)step}");
     }
 
     private async Task<IActionResult> ChangeAsync(
@@ -56,24 +74,34 @@ public class UnitModel(UnitProvisioning provisioning, ProductionChecklist checkl
         if (!ProductionChecklistFormat.TryParseInput(form.PerformedAt, out var performedAt))
             return await FailAsync("The date and time isn't valid.");
 
-        var result = await action(userId, new StepInput(performedAt, form.Note, form.MountingTypeId, form.ElectrodeSetId));
+        Guid? assemblyId = null;
+        if (!string.IsNullOrWhiteSpace(form.AssemblyPartNo))
+        {
+            var item = await catalog.FindAsync(form.AssemblyPartNo);
+            if (item is not { Kind: CatalogKind.Assembly })
+                return await FailAsync($"{form.AssemblyPartNo.Trim()} isn't an assembly in the catalog.");
+            assemblyId = item.Id;
+        }
+
+        var result = await action(userId, new StepInput(performedAt, form.Note, assemblyId));
         if (!result.IsOk)
             return await FailAsync(result.Message);
 
         StatusMessage = $"{ProductionChecklist.Title(step)} {verb}.";
         if (result.Warnings is { Count: > 0 })
             WarningMessage = string.Join(" ", result.Warnings);
-        return RedirectToPage(new { serial = Serial });
+        return RedirectToPage(pageName: null, pageHandler: null, routeValues: new { serial = Serial }, fragment: $"row-{(int)step}");
     }
 
     protected override async Task LoadAsync()
     {
         Unit = await checklist.GetAsync(Serial);
-        MountingOptions = await Db.MountingTypes.OrderBy(m => m.DisplayName).ToListAsync();
-        ElectrodeOptions = (await Db.ElectrodeSets.ToListAsync())
-            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ThenBy(s => s.Version, StringComparer.OrdinalIgnoreCase).ToList();
+        Graph = await catalog.LoadGraphAsync();
         if (Unit is null)
             return;
+
+        Trees = Unit.Steps.Where(s => s.AssemblyId is not null).Select(s => s.AssemblyId!.Value).Distinct()
+            .ToDictionary(id => id, id => Graph.Tree(id));
 
         History = await checklist.HistoryAsync(Unit.Unit.Id);
         Emails = await EmailsAsync(Unit.Steps.Select(s => s.PerformedByUserId).Concat(History.Select(e => e.UserId)));
@@ -85,9 +113,8 @@ public class UnitModel(UnitProvisioning provisioning, ProductionChecklist checkl
 
         public string? Note { get; set; }
 
-        public int? MountingTypeId { get; set; }
-
-        public Guid? ElectrodeSetId { get; set; }
+        /// <summary>Part number of the assembly for steps 4 and 5; blank = not specified.</summary>
+        public string? AssemblyPartNo { get; set; }
 
         public bool ConfirmPaired { get; set; }
     }

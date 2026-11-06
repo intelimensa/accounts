@@ -5,16 +5,25 @@
     ViewData["Title"] = "Manufacturing";
 
     // Bootstrap Icons paths (16x16 viewBox), inlined so there is no icon font to ship.
+    // The three most used come first; the rest see less use.
     var cards = new List<DashboardCard>
     {
-        new("Reserve units",
-            "Issue a new serial and its registration code at once, for a unit you are about to flash.",
-            "/Manufacturing/Reserve", "Reserve units",
-            "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"),
+        new("Units",
+            "Every unit with its status, firmware and production checklist at a glance. Open a unit to mark steps, or filter by what is done.",
+            "/Manufacturing/Units", "View units",
+            "M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v1a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"),
+        new("Parts and assemblies",
+            "The catalog: every part and assembly with its part number, what assemblies are made of, and what supersedes what.",
+            "/Manufacturing/Catalog", "Open the catalog",
+            "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"),
         new("Allocate serials",
             "Get serials ahead of time for casings, or hold serials you already have. No code yet.",
             "/Manufacturing/Serials", "Allocate serials",
             "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"),
+    };
+
+    var moreCards = new List<DashboardCard>
+    {
         new("Rekey a unit",
             "Issue a new registration code for a serial, including the first code of a held serial.",
             "/Manufacturing/Rekey", "Rekey a unit",
@@ -23,22 +32,18 @@
             "Check the code read back from the unit and mark it Manufactured so it can be registered.",
             "/Manufacturing/Confirm", "Confirm a unit",
             "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05"),
-        new("Units",
-            "See every unit issued here, with its status and firmware, and void reserved ones.",
-            "/Manufacturing/Units", "View units",
-            "M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v1a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"),
+        new("Reserve units",
+            "Issue a new serial and its registration code at once, for a unit you are about to flash.",
+            "/Manufacturing/Reserve", "Reserve units",
+            "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"),
         new("Unit checklist",
-            "Open a unit's production checklist: casing, electrodes, mounting, QC and packaging, each with its date and account.",
+            "Jump straight to one unit's production checklist by its serial.",
             "/Manufacturing/Unit", "Open a checklist",
             "M3.854 2.146a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708 0l-.5-.5a.5.5 0 1 1 .708-.708L2 3.293l1.146-1.147a.5.5 0 0 1 .708 0m0 4a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708 0l-.5-.5a.5.5 0 1 1 .708-.708L2 7.293l1.146-1.147a.5.5 0 0 1 .708 0m0 4a.5.5 0 0 1 0 .708l-1.5 1.5a.5.5 0 0 1-.708 0l-.5-.5a.5.5 0 0 1 .708-.708l.146.147 1.146-1.147a.5.5 0 0 1 .708 0M7 4.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m0 4a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m0 4a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5"),
-        new("Electrode sets",
-            "Define the electrode sets (assemblies and parts, with counts) that units are assigned in the checklist.",
-            "/Manufacturing/ElectrodeSets", "Electrode sets",
-            "M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"),
-        new("Mounting clips",
-            "The list of mounting clip types a unit can be assigned. Add, rename or retire entries.",
-            "/Manufacturing/MountingTypes", "Mounting clips",
-            "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"),
+        new("Import and export",
+            "Load the catalog from an XML file (checked first, all or nothing), or download it.",
+            "/Manufacturing/CatalogImport", "Import or export",
+            "M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5 M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"),
     };
 }
 
@@ -46,7 +51,11 @@
 <p class="text-muted">
     Allocate serials ahead of time for the casings, then rekey each one when its board is flashed
     (that issues its registration code) and confirm it with the code read back from the unit. A unit
-    can only be registered by a participant once it is <strong>Manufactured</strong>.
+    can only be registered by a participant once it is <strong>Manufactured</strong>. Track the rest
+    of its production on its checklist, with the parts and assemblies it is made of from the catalog.
 </p>
 
 <partial name="_DashboardCards" model="cards" />
+
+<h2 class="h5 text-muted mt-5 mb-3">Less often</h2>
+<partial name="_DashboardCards" model="moreCards" />

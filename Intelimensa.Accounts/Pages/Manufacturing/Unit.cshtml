@@ -45,6 +45,15 @@ else
         }
     </div>
 
+    @foreach (var assemblyStep in ProductionChecklist.Steps.Where(ProductionChecklist.IsAssemblyStep))
+    {
+        <datalist id="assembly-options-@((int)assemblyStep)">
+            @foreach (var option in Model.AssemblyOptionsFor(assemblyStep))
+            {
+                <option value="@option.PartNo">@option.Name@(Model.IsSuperseded(option.Id) ? " (superseded)" : "")</option>
+            }
+        </datalist>
+    }
     <div class="feature-card mb-4">
         <table class="table table-sm align-middle mb-0">
             <thead><tr><th>Step</th><th>Status</th><th>When (UTC)</th><th>By</th><th>Detail</th><th></th></tr></thead>
@@ -53,7 +62,7 @@ else
             {
                 var row = Model.Unit.Get(step);
                 var rowId = $"step-{(int)step}";
-                <tr>
+                <tr id="row-@((int)step)">
                     <td>@ProductionChecklist.Title(step)</td>
                     @if (row is null)
                     {
@@ -69,10 +78,17 @@ else
                             @if (row.Source != ProductionStepSource.Manual) { <span class="text-muted small">(@row.Source)</span> }
                         </td>
                         <td>
-                            @if (row.MountingType is not null) { <div>@row.MountingType.DisplayName</div> }
-                            @if (row.ElectrodeSet is not null)
+                            @if (row.Assembly is not null)
                             {
-                                <div><a asp-page="/Manufacturing/ElectrodeSet" asp-route-id="@row.ElectrodeSet.Id">@row.ElectrodeSet.Name @row.ElectrodeSet.Version</a></div>
+                                <div>
+                                    <a asp-page="/Manufacturing/CatalogItem" asp-route-id="@row.Assembly.Id" class="font-monospace">@row.Assembly.PartNo</a>
+                                    @row.Assembly.Name
+                                    @if (Model.IsSuperseded(row.Assembly.Id)) { <span class="badge text-bg-warning">superseded</span> }
+                                </div>
+                                <details class="small mt-1">
+                                    <summary style="cursor: pointer">Contents</summary>
+                                    <partial name="_CatalogTree" model="Model.Trees[row.Assembly.Id]" />
+                                </details>
                             }
                             @if (row.Note is not null) { <div class="small text-muted" style="white-space: pre-line">@row.Note</div> }
                         </td>
@@ -87,30 +103,16 @@ else
                                 <input id="@rowId-when" type="datetime-local" name="PerformedAt" class="form-control"
                                        value="@(row is null ? Model.Now : ProductionChecklistFormat.Input(row.PerformedAt))" />
                             </div>
-                            @if (step == ProductionStepType.MountingAssigned)
+                            @if (ProductionChecklist.IsAssemblyStep(step))
                             {
-                                <div class="col-md-4">
-                                    <label class="form-label small" for="@rowId-mount">Mounting clip</label>
-                                    <select id="@rowId-mount" name="MountingTypeId" class="form-select">
-                                        <option value="">(not specified)</option>
-                                        @foreach (var m in Model.MountingOptions.Where(m => m.RetiredAt is null || m.Id == row?.MountingTypeId))
-                                        {
-                                            <option value="@m.Id" selected="@(m.Id == row?.MountingTypeId)">@m.DisplayName@(m.RetiredAt is null ? "" : " (retired)")</option>
-                                        }
-                                    </select>
-                                </div>
-                            }
-                            @if (step == ProductionStepType.ElectrodesAssigned)
-                            {
-                                <div class="col-md-4">
-                                    <label class="form-label small" for="@rowId-set">Electrode set</label>
-                                    <select id="@rowId-set" name="ElectrodeSetId" class="form-select">
-                                        <option value="">(not specified)</option>
-                                        @foreach (var s in Model.ElectrodeOptions.Where(s => s.RetiredAt is null || s.Id == row?.ElectrodeSetId))
-                                        {
-                                            <option value="@s.Id" selected="@(s.Id == row?.ElectrodeSetId)">@s.Name @s.Version@(s.RetiredAt is null ? "" : " (retired)")</option>
-                                        }
-                                    </select>
+                                <div class="col-md-6">
+                                    <label class="form-label small" for="@rowId-asm">Assembly <span class="text-muted">(part number; blank = not specified)</span></label>
+                                    <input id="@rowId-asm" name="AssemblyPartNo" list="assembly-options-@((int)step)" autocomplete="off" class="form-control font-monospace"
+                                           value="@row?.Assembly?.PartNo" />
+                                    @if (Model.RequiredTag(step) is { } requiredTag)
+                                    {
+                                        <div class="form-text">Only assemblies tagged <span class="font-monospace">@requiredTag</span> can be assigned here.</div>
+                                    }
                                 </div>
                             }
                             <div class="col-12">

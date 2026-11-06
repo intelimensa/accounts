@@ -1,0 +1,63 @@
+@page
+@model Intelimensa.Accounts.Pages.Manufacturing.CatalogImportModel
+@using Intelimensa.Accounts.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing: Import and export";
+}
+
+<h1 class="h3 mb-3">Import and export</h1>
+<partial name="_ProductionMessages" model="Model" />
+
+<p class="text-muted small">
+    The catalog as an XML file: one <code>&lt;Catalog Format="1"&gt;</code> with <code>&lt;Parts&gt;</code> and <code>&lt;Assemblies&gt;</code>.
+    An import adds and updates by part number and never deletes. The whole file is checked first and applied all at once or not
+    at all. An assembly that is in use can't have its contents changed by a file: define the revision under a new part number.
+</p>
+
+<div class="feature-card mb-4">
+    <form method="post" enctype="multipart/form-data" class="row g-2">
+        <div class="col-md-6">
+            <label class="form-label small" for="f-file">XML file</label>
+            <input id="f-file" type="file" name="file" accept=".xml,application/xml,text/xml" class="form-control" required />
+        </div>
+        <div class="col-md-4 align-self-end form-check ms-2">
+            <input id="f-validate" type="checkbox" name="validateOnly" value="true" class="form-check-input" checked />
+            <label class="form-check-label small" for="f-validate">Validate only (change nothing)</label>
+        </div>
+        <div class="col-12"><button type="submit" class="btn btn-ia-outline">Import</button></div>
+    </form>
+</div>
+
+@if (Model.Report is { } report)
+{
+    if (report.Ok)
+    {
+        <div class="alert alert-success" role="alert">
+            <strong>@(report.Applied ? "Imported." : "The file is valid; nothing was changed.")</strong>
+            @(report.Applied ? "" : "It would create") @report.Created new, @report.Updated updated, @report.Unchanged unchanged;
+            @report.LinksAdded supersedes link(s) added, @report.Retired retired.
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>Nothing was imported.</strong> @report.Issues.Count problem(s)@(report.Issues.Count >= CatalogXml.MaxIssues ? " (first " + CatalogXml.MaxIssues + " shown)" : ""):
+            <ul class="mb-0 mt-1">
+                @foreach (var issue in report.Issues)
+                {
+                    <li>@(issue.Line > 0 ? $"Line {issue.Line}: " : "")@issue.Message</li>
+                }
+            </ul>
+        </div>
+    }
+}
+
+<div class="feature-card">
+    <h2 class="h5">Export</h2>
+    <p class="small text-muted mb-2">
+        The whole catalog. To export one assembly with everything below it, use the link on its page.
+    </p>
+    <a asp-page="/Manufacturing/CatalogImport" asp-page-handler="Export" class="btn btn-ia-outline btn-sm">Download the catalog as XML</a>
+</div>
+
+<p class="mt-3"><a asp-page="/Manufacturing/Catalog">&larr; Back to the catalog</a></p>

@@ -1,0 +1,280 @@
+@page "{id:guid}"
+@model Intelimensa.Accounts.Pages.Manufacturing.CatalogItemModel
+@using Intelimensa.Accounts.Manufacturing
+@using Intelimensa.Accounts.Models
+@using Intelimensa.Accounts.Pages.Manufacturing
+@{
+    ViewData["Title"] = "Manufacturing: Catalog item";
+}
+
+<h1 class="h3 mb-3" id="top">Catalog item</h1>
+<partial name="_ProductionMessages" model="Model" />
+
+@if (Model.Item is null)
+{
+    <p class="text-muted">No such part or assembly.</p>
+}
+else
+{
+    var item = Model.Item;
+    <div class="feature-card mb-3">
+        <div class="d-flex flex-wrap gap-2 align-items-baseline mb-2">
+            <span class="h5 mb-0 font-monospace">@item.PartNo</span>
+            <span>@item.Kind</span>
+            @if (item.RetiredAt is not null) { <span class="badge text-bg-secondary">retired</span> }
+            @if (Model.SupersededBy.Count > 0) { <span class="badge text-bg-warning">superseded</span> }
+            @if (item.IsAssembly)
+            {
+                if (item.FrozenAt is not null) { <span class="badge text-bg-info">frozen</span> }
+                else { <span class="badge text-bg-light border">draft</span> }
+            }
+        </div>
+        <p class="small text-muted mb-2">
+            Issued @ProductionPageModel.When(item.CreatedAt) by @ProductionPageModel.Who(Model.Emails, item.CreatedByUserId).
+            Last changed @ProductionPageModel.When(item.LastModifiedAt) by @ProductionPageModel.Who(Model.Emails, item.LastModifiedByUserId).
+            The part number itself never changes.
+        </p>
+        @if (Model.Newest.Count > 0)
+        {
+            <div class="alert alert-warning py-2">
+                A newer revision exists:
+                @foreach (var newest in Model.Newest)
+                {
+                    <a asp-page="/Manufacturing/CatalogItem" asp-route-id="@newest.Id" class="font-monospace me-2">@newest.PartNo</a>
+                }
+            </div>
+        }
+        @if (item.IsAssembly && item.FrozenAt is not null)
+        {
+            <p class="small text-muted">
+                This assembly is in use, so its contents are frozen. To change them, copy it under a new part number (below).
+                Its name, description and reference can still be edited.
+            </p>
+        }
+
+        <form method="post" asp-page-handler="Save" asp-route-id="@item.Id" class="row g-2">
+            <div class="col-md-5">
+                <label class="form-label small" for="i-name">Name</label>
+                <input id="i-name" name="name" value="@item.Name" class="form-control" maxlength="@CatalogService.MaxNameLength" required />
+            </div>
+            <div class="col-md-7">
+                <label class="form-label small" for="i-ref">Reference <span class="text-muted">(free text, e.g. CAD file)</span></label>
+                <input id="i-ref" name="reference" value="@item.Reference" class="form-control" maxlength="@CatalogService.MaxReferenceLength" />
+            </div>
+            <div class="col-12">
+                <label class="form-label small" for="i-desc">Description</label>
+                <input id="i-desc" name="description" value="@item.Description" class="form-control" maxlength="@CatalogService.MaxDescriptionLength" />
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-ia-outline btn-sm">Save</button>
+                @if (item.IsAssembly)
+                {
+                    <a asp-page="/Manufacturing/CatalogItem" asp-page-handler="Export" asp-route-id="@item.Id" class="btn btn-link btn-sm">Export this assembly as XML</a>
+                }
+            </div>
+        </form>
+        <form method="post" asp-page-handler="SaveTags" asp-route-id="@item.Id" class="row g-2 mt-1" id="tags">
+            <div class="col-md-8">
+                <label class="form-label small" for="i-tags">Tags <span class="text-muted">(comma-separated)</span></label>
+                <input id="i-tags" name="tags" value="@CatalogTags.Format(Model.Tags.Select(t => t.Tag))" class="form-control font-monospace" placeholder="e.g. electrode-set" />
+            </div>
+            <div class="col-auto align-self-end"><button type="submit" class="btn btn-ia-outline btn-sm">Save tags</button></div>
+            <div class="col-12 small text-muted">
+                @foreach (var tag in Model.Tags.Where(t => t.FrozenAt is not null))
+                {
+                    <span class="badge text-bg-info me-1" title="A unit was assigned this because of the tag">@tag.Tag locked</span>
+                }
+                @if (Model.Tags.Any(t => t.FrozenAt is not null)) { <span>A locked tag can't be removed.</span> }
+                @if (Model.KnownTags.Count > 0)
+                {
+                    <div>In use elsewhere:
+                        @foreach (var (tag, items) in Model.KnownTags) { <span class="font-monospace me-2">@tag</span> }
+                    </div>
+                }
+            </div>
+        </form>
+        @if (item.RetiredAt is null)
+        {
+            <form method="post" asp-page-handler="Retire" asp-route-id="@item.Id" class="mt-2">
+                <button type="submit" class="btn btn-link btn-sm text-danger">Retire</button>
+                <span class="small text-muted">A retired item stays where it is used but can't be added or assigned again.</span>
+            </form>
+        }
+    </div>
+
+    @if (item.IsAssembly)
+    {
+        <h2 class="h5" id="contents">Contents</h2>
+        <div class="feature-card mb-3">
+            @{
+                var lines = Model.Graph.ChildrenOf(item.Id);
+            }
+            @if (lines.Count == 0)
+            {
+                <p class="text-muted mb-2">Nothing in it yet.@(Model.IsDraft ? " Add parts or assemblies below." : "")</p>
+            }
+            else if (Model.IsDraft)
+            {
+                <table class="table table-sm align-middle mb-2">
+                    <thead><tr><th>Part number</th><th>Name</th><th style="width: 9rem">Count</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var line in lines)
+                    {
+                        var child = Model.Graph.Items[line.ChildId];
+                        <tr id="c-@child.Id">
+                            <td class="font-monospace"><a asp-page="/Manufacturing/CatalogItem" asp-route-id="@child.Id">@child.PartNo</a></td>
+                            <td>@child.Name <span class="text-muted small">(@child.Kind.ToString().ToLowerInvariant())</span></td>
+                            <td>
+                                <form method="post" asp-page-handler="SetCount" asp-route-id="@item.Id" class="d-flex gap-1">
+                                    <input type="hidden" name="childId" value="@child.Id" />
+                                    <input name="count" type="number" min="1" max="@CatalogService.MaxCount" value="@line.Count" class="form-control form-control-sm" required />
+                                    <button type="submit" class="btn btn-link btn-sm">Save</button>
+                                </form>
+                            </td>
+                            <td class="text-end">
+                                <form method="post" asp-page-handler="RemoveChild" asp-route-id="@item.Id" class="d-inline">
+                                    <input type="hidden" name="childId" value="@child.Id" />
+                                    <button type="submit" class="btn btn-link btn-sm text-danger">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <partial name="_CatalogTree" model="Model.Tree" />
+            }
+
+            @if (Model.IsDraft)
+            {
+                <datalist id="child-options">
+                    @foreach (var option in Model.ChildOptions)
+                    {
+                        <option value="@option.PartNo">@option.Name (@option.Kind.ToString().ToLowerInvariant())</option>
+                    }
+                </datalist>
+                <form method="post" asp-page-handler="AddChild" asp-route-id="@item.Id" class="row g-2 mt-1">
+                    <div class="col-sm-5">
+                        <input name="childPartNo" list="child-options" autocomplete="off" class="form-control form-control-sm font-monospace"
+                               placeholder="Part number of a part or assembly to add" required />
+                    </div>
+                    <div class="col-sm-2">
+                        <input name="count" type="number" min="1" max="@CatalogService.MaxCount" value="1" class="form-control form-control-sm" required aria-label="Count" />
+                    </div>
+                    <div class="col-auto"><button type="submit" class="btn btn-ia-outline btn-sm">Add</button></div>
+                </form>
+            }
+        </div>
+
+        @if (Model.Flat.Count > 0)
+        {
+            <details class="mb-3">
+                <summary class="fw-semibold" style="cursor: pointer">All parts in one list (@Model.Flat.Count)</summary>
+                <table class="table table-sm mt-2 mb-0">
+                    <thead><tr><th>Part number</th><th>Name</th><th class="text-end">Total</th></tr></thead>
+                    <tbody>
+                    @foreach (var flat in Model.Flat.OrderBy(f => f.Part.PartNo, StringComparer.OrdinalIgnoreCase))
+                    {
+                        <tr><td class="font-monospace">@flat.Part.PartNo</td><td>@flat.Part.Name</td><td class="text-end">@flat.Total</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </details>
+        }
+    }
+
+    <h2 class="h5" id="supersedes">Supersedes</h2>
+    <div class="feature-card mb-3">
+        @if (Model.Supersedes.Count == 0 && Model.SupersededBy.Count == 0)
+        {
+            <p class="text-muted small mb-2">No links. A revision of something older says so here.</p>
+        }
+        @foreach (var old in Model.Supersedes)
+        {
+            <form method="post" asp-page-handler="Unsupersede" asp-route-id="@item.Id" class="d-flex gap-2 align-items-baseline">
+                <input type="hidden" name="oldId" value="@old.Id" />
+                <span>supersedes <a asp-page="/Manufacturing/CatalogItem" asp-route-id="@old.Id" class="font-monospace">@old.PartNo</a> @old.Name</span>
+                <button type="submit" class="btn btn-link btn-sm text-danger">Remove link</button>
+            </form>
+        }
+        @foreach (var newer in Model.SupersededBy)
+        {
+            <div>superseded by <a asp-page="/Manufacturing/CatalogItem" asp-route-id="@newer.Id" class="font-monospace">@newer.PartNo</a> @newer.Name</div>
+        }
+        <form method="post" asp-page-handler="Supersedes" asp-route-id="@item.Id" class="row g-2 mt-1">
+            <div class="col-sm-5">
+                <input name="oldPartNo" class="form-control form-control-sm font-monospace" placeholder="This supersedes part number" required />
+            </div>
+            <div class="col-auto"><button type="submit" class="btn btn-ia-outline btn-sm">Add link</button></div>
+        </form>
+    </div>
+
+    <h2 class="h5">Make a revision</h2>
+    <div class="feature-card mb-3">
+        <p class="small text-muted">
+            Copies this @item.Kind.ToString().ToLowerInvariant() under a new part number@(item.IsAssembly ? ", with its contents as a draft you can then change" : ""). The old one is left as it is.
+        </p>
+        <form method="post" asp-page-handler="Copy" asp-route-id="@item.Id" class="row g-2">
+            <div class="col-sm-4">
+                <input name="newPartNo" class="form-control form-control-sm font-monospace" maxlength="@PartNumber.MaxLength" placeholder="New part number" required />
+            </div>
+            <div class="col-auto form-check ms-2 align-self-center">
+                <input id="copy-sup" type="checkbox" name="supersedesSource" value="true" class="form-check-input" checked />
+                <label class="form-check-label small" for="copy-sup">The copy supersedes @item.PartNo</label>
+            </div>
+            <div class="col-auto"><button type="submit" class="btn btn-ia-outline btn-sm">Copy as new part number</button></div>
+        </form>
+    </div>
+
+    <h2 class="h5">Where it is used</h2>
+    <div class="feature-card mb-3">
+        <div class="mb-2">
+            <span class="fw-semibold small">In assemblies:</span>
+            @if (Model.ParentAssemblies.Count == 0) { <span class="text-muted small">none</span> }
+            @foreach (var parent in Model.ParentAssemblies)
+            {
+                <a asp-page="/Manufacturing/CatalogItem" asp-route-id="@parent.Id" class="font-monospace me-2">@parent.PartNo</a>
+            }
+        </div>
+        <div>
+            <span class="fw-semibold small">On units (@Model.Units.Count):</span>
+            @if (Model.Units.Count == 0) { <span class="text-muted small">none</span> }
+            @foreach (var use in Model.Units)
+            {
+                <a asp-page="/Manufacturing/Unit" asp-route-serial="@use.SerialNumber" class="font-monospace me-2"
+                   title="@ProductionChecklist.Title(use.Step) via @use.Assembly.PartNo">@SerialNumber.ToDisplay(use.SerialNumber)</a>
+            }
+        </div>
+    </div>
+
+    @if (Model.History.Count > 0)
+    {
+        <h2 class="h5">History of name, description and reference</h2>
+        <div class="feature-card mb-3">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>When (UTC)</th><th>By</th><th>Field</th><th>Was</th><th>Now</th></tr></thead>
+                <tbody>
+                @foreach (var change in Model.History)
+                {
+                    <tr>
+                        <td>@ProductionPageModel.When(change.At)</td>
+                        <td>@ProductionPageModel.Who(Model.Emails, change.ByUserId)</td>
+                        <td>@change.Field</td>
+                        <td class="text-muted">@change.OldValue</td>
+                        <td>@change.NewValue</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<p class="mt-3"><a asp-page="/Manufacturing/Catalog">&larr; Back to the catalog</a></p>
+
+<script>
+    var alertBox = document.querySelector('.alert-danger');
+    if (alertBox) { alertBox.scrollIntoView({ block: 'center' }); }
+</script>

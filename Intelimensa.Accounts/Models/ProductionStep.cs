@@ -53,111 +53,13 @@ public class ProductionStep
 
     public ProductionStepSource Source { get; set; }
 
-    /// <summary>Set only on <see cref="ProductionStepType.MountingAssigned"/>.</summary>
-    public int? MountingTypeId { get; set; }
+    /// <summary>
+    /// The catalog assembly the unit carries: set only on <see cref="ProductionStepType.ElectrodesAssigned"/> and
+    /// <see cref="ProductionStepType.MountingAssigned"/>, and optional there (a shipped unit whose parts are unknown).
+    /// </summary>
+    public Guid? AssemblyId { get; set; }
 
-    public MountingType? MountingType { get; set; }
-
-    /// <summary>Set only on <see cref="ProductionStepType.ElectrodesAssigned"/>.</summary>
-    public Guid? ElectrodeSetId { get; set; }
-
-    public ElectrodeSet? ElectrodeSet { get; set; }
+    public CatalogItem? Assembly { get; set; }
 
     public string? Note { get; set; }
-}
-
-/// <summary>A mounting clip type a unit can carry. Manufacturers maintain the list; entries are only ever retired.</summary>
-public class MountingType
-{
-    public int Id { get; set; }
-
-    /// <summary>Lowercase slug, unique.</summary>
-    public required string Key { get; set; }
-
-    public required string DisplayName { get; set; }
-
-    public DateTimeOffset? RetiredAt { get; set; }
-
-    public string? RetiredByUserId { get; set; }
-}
-
-/// <summary>
-/// The complete electrode complement of a unit: assemblies made of parts, with counts. Defined by
-/// Manufacturers. Once assigned to any unit it is frozen (<see cref="FrozenAt"/>, never cleared): a change is
-/// a new revision, copied from it. A set is never deleted, only retired.
-/// </summary>
-public class ElectrodeSet
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-
-    public required string Name { get; set; }
-
-    public string? Description { get; set; }
-
-    /// <summary>A label the manufacturer types ("A", "1.0"). No meaning to the software; (Name, Version) is unique.</summary>
-    public required string Version { get; set; }
-
-    /// <summary>The set this one was copied from by "New revision".</summary>
-    public Guid? PreviousId { get; set; }
-
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-
-    public string? CreatedByUserId { get; set; }
-
-    public DateTimeOffset LastModifiedAt { get; set; } = DateTimeOffset.UtcNow;
-
-    public string? LastModifiedByUserId { get; set; }
-
-    /// <summary>Set when first assigned to a unit; from then on the contents can't be edited.</summary>
-    public DateTimeOffset? FrozenAt { get; set; }
-
-    public DateTimeOffset? RetiredAt { get; set; }
-
-    public string? RetiredByUserId { get; set; }
-
-    public List<ElectrodeAssembly> Assemblies { get; set; } = [];
-}
-
-public class ElectrodeAssembly
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-
-    public Guid ElectrodeSetId { get; set; }
-
-    public ElectrodeSet? ElectrodeSet { get; set; }
-
-    public int Position { get; set; }
-
-    public required string Name { get; set; }
-
-    public string? Description { get; set; }
-
-    public required string Version { get; set; }
-
-    public string? PartNumber { get; set; }
-
-    public int Count { get; set; } = 1;
-
-    public List<ElectrodePart> Parts { get; set; } = [];
-}
-
-public class ElectrodePart
-{
-    public Guid Id { get; set; } = Guid.NewGuid();
-
-    public Guid ElectrodeAssemblyId { get; set; }
-
-    public ElectrodeAssembly? ElectrodeAssembly { get; set; }
-
-    public int Position { get; set; }
-
-    public required string Name { get; set; }
-
-    public string? Description { get; set; }
-
-    public required string Version { get; set; }
-
-    public string? PartNumber { get; set; }
-
-    public int Count { get; set; } = 1;
 }

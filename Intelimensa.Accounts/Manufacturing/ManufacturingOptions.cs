@@ -25,6 +25,17 @@ public class ManufacturingOptions
     /// reveal exactly how many units exist.
     /// </summary>
     public int MaxSequenceStep { get; set; } = 8;
+
+    /// <summary>
+    /// The catalog tag an assembly must carry to be assigned at a checklist step (docs/production-checklist.md): keys are
+    /// <c>ElectrodesAssigned</c> and <c>MountingAssigned</c>. An empty value means no requirement. Entries given in
+    /// configuration replace these defaults one by one.
+    /// </summary>
+    public Dictionary<string, string> StepTags { get; set; } = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ElectrodesAssigned"] = "electrode-set",
+        ["MountingAssigned"] = "mounting-clip",
+    };
 }
 
 public class ManufacturingOptionsValidator : IValidateOptions<ManufacturingOptions>
@@ -40,6 +51,15 @@ public class ManufacturingOptionsValidator : IValidateOptions<ManufacturingOptio
         foreach (var (code, _) in options.RegionCodes)
             if (!SerialNumber.IsValidRegionCode(code.ToUpperInvariant()) || code != code.ToUpperInvariant())
                 errors.Add($"Manufacturing:RegionCodes:{code} must be 1 uppercase alphanumeric character.");
+
+        foreach (var (step, tag) in options.StepTags)
+        {
+            if (!Enum.TryParse<Intelimensa.Accounts.Models.ProductionStepType>(step, ignoreCase: true, out var parsed)
+                || !ProductionChecklist.IsAssemblyStep(parsed))
+                errors.Add($"Manufacturing:StepTags:{step} must be ElectrodesAssigned or MountingAssigned.");
+            else if (!string.IsNullOrEmpty(tag) && !CatalogTags.IsValid(tag))
+                errors.Add($"Manufacturing:StepTags:{step} '{tag}' is not a valid tag. {CatalogTags.Rule}");
+        }
 
         if (options.SequenceStart is < 0 or > SerialNumber.MaxSequence)
             errors.Add("Manufacturing:SequenceStart is out of range.");

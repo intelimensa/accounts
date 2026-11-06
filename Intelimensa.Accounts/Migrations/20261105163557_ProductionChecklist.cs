@@ -25,14 +25,15 @@ namespace Intelimensa.Accounts.Migrations
                 defaultValue: false);
 
             migrationBuilder.CreateTable(
-                name: "ElectrodeSets",
+                name: "CatalogItems",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Kind = table.Column<int>(type: "INTEGER", nullable: false),
+                    PartNo = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     Description = table.Column<string>(type: "TEXT", nullable: true),
-                    Version = table.Column<string>(type: "TEXT", nullable: false),
-                    PreviousId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    Reference = table.Column<string>(type: "TEXT", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     CreatedByUserId = table.Column<string>(type: "TEXT", nullable: true),
                     LastModifiedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -43,47 +44,82 @@ namespace Intelimensa.Accounts.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_ElectrodeSets", x => x.Id);
+                    table.PrimaryKey("PK_CatalogItems", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
-                name: "MountingTypes",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    Key = table.Column<string>(type: "TEXT", nullable: false),
-                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
-                    RetiredAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
-                    RetiredByUserId = table.Column<string>(type: "TEXT", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_MountingTypes", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "ElectrodeAssemblies",
+                name: "CatalogChanges",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ElectrodeSetId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    ItemId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    At = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    ByUserId = table.Column<string>(type: "TEXT", nullable: true),
+                    Field = table.Column<string>(type: "TEXT", nullable: false),
+                    OldValue = table.Column<string>(type: "TEXT", nullable: true),
+                    NewValue = table.Column<string>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CatalogChanges", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CatalogChanges_CatalogItems_ItemId",
+                        column: x => x.ItemId,
+                        principalTable: "CatalogItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CatalogChildren",
+                columns: table => new
+                {
+                    AssemblyId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    ChildId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Position = table.Column<int>(type: "INTEGER", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    Description = table.Column<string>(type: "TEXT", nullable: true),
-                    Version = table.Column<string>(type: "TEXT", nullable: false),
-                    PartNumber = table.Column<string>(type: "TEXT", nullable: true),
                     Count = table.Column<int>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_ElectrodeAssemblies", x => x.Id);
+                    table.PrimaryKey("PK_CatalogChildren", x => new { x.AssemblyId, x.ChildId });
                     table.ForeignKey(
-                        name: "FK_ElectrodeAssemblies_ElectrodeSets_ElectrodeSetId",
-                        column: x => x.ElectrodeSetId,
-                        principalTable: "ElectrodeSets",
+                        name: "FK_CatalogChildren_CatalogItems_AssemblyId",
+                        column: x => x.AssemblyId,
+                        principalTable: "CatalogItems",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_CatalogChildren_CatalogItems_ChildId",
+                        column: x => x.ChildId,
+                        principalTable: "CatalogItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CatalogSupersessions",
+                columns: table => new
+                {
+                    NewId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    OldId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    CreatedByUserId = table.Column<string>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CatalogSupersessions", x => new { x.NewId, x.OldId });
+                    table.ForeignKey(
+                        name: "FK_CatalogSupersessions_CatalogItems_NewId",
+                        column: x => x.NewId,
+                        principalTable: "CatalogItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_CatalogSupersessions_CatalogItems_OldId",
+                        column: x => x.OldId,
+                        principalTable: "CatalogItems",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -97,8 +133,7 @@ namespace Intelimensa.Accounts.Migrations
                     RecordedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     PerformedByUserId = table.Column<string>(type: "TEXT", nullable: true),
                     Source = table.Column<int>(type: "INTEGER", nullable: false),
-                    MountingTypeId = table.Column<int>(type: "INTEGER", nullable: true),
-                    ElectrodeSetId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    AssemblyId = table.Column<Guid>(type: "TEXT", nullable: true),
                     Note = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
@@ -111,91 +146,44 @@ namespace Intelimensa.Accounts.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_ProductionSteps_ElectrodeSets_ElectrodeSetId",
-                        column: x => x.ElectrodeSetId,
-                        principalTable: "ElectrodeSets",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ProductionSteps_MountingTypes_MountingTypeId",
-                        column: x => x.MountingTypeId,
-                        principalTable: "MountingTypes",
+                        name: "FK_ProductionSteps_CatalogItems_AssemblyId",
+                        column: x => x.AssemblyId,
+                        principalTable: "CatalogItems",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
 
-            migrationBuilder.CreateTable(
-                name: "ElectrodeParts",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ElectrodeAssemblyId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Position = table.Column<int>(type: "INTEGER", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    Description = table.Column<string>(type: "TEXT", nullable: true),
-                    Version = table.Column<string>(type: "TEXT", nullable: false),
-                    PartNumber = table.Column<string>(type: "TEXT", nullable: true),
-                    Count = table.Column<int>(type: "INTEGER", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ElectrodeParts", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ElectrodeParts_ElectrodeAssemblies_ElectrodeAssemblyId",
-                        column: x => x.ElectrodeAssemblyId,
-                        principalTable: "ElectrodeAssemblies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+            migrationBuilder.CreateIndex(
+                name: "IX_CatalogChanges_ItemId",
+                table: "CatalogChanges",
+                column: "ItemId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ElectrodeAssemblies_ElectrodeSetId_Name_Version",
-                table: "ElectrodeAssemblies",
-                columns: new[] { "ElectrodeSetId", "Name", "Version" },
+                name: "IX_CatalogChildren_ChildId",
+                table: "CatalogChildren",
+                column: "ChildId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CatalogItems_PartNo",
+                table: "CatalogItems",
+                column: "PartNo",
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_ElectrodeParts_ElectrodeAssemblyId_Name_Version",
-                table: "ElectrodeParts",
-                columns: new[] { "ElectrodeAssemblyId", "Name", "Version" },
-                unique: true);
+                name: "IX_CatalogSupersessions_OldId",
+                table: "CatalogSupersessions",
+                column: "OldId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ElectrodeSets_Name_Version",
-                table: "ElectrodeSets",
-                columns: new[] { "Name", "Version" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ElectrodeSets_PreviousId",
-                table: "ElectrodeSets",
-                column: "PreviousId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_MountingTypes_Key",
-                table: "MountingTypes",
-                column: "Key",
-                unique: true);
+                name: "IX_ProductionSteps_AssemblyId",
+                table: "ProductionSteps",
+                column: "AssemblyId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ProductionSteps_BciDeviceId_Step",
                 table: "ProductionSteps",
                 columns: new[] { "BciDeviceId", "Step" },
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ProductionSteps_ElectrodeSetId",
-                table: "ProductionSteps",
-                column: "ElectrodeSetId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ProductionSteps_MountingTypeId",
-                table: "ProductionSteps",
-                column: "MountingTypeId");
-
-            // Data. The two placeholder mounting clip types (the Manufacturer corrects or replaces them in the edit tool).
-            migrationBuilder.Sql(
-                "INSERT INTO MountingTypes (\"Key\", DisplayName) VALUES ('padded-clips', 'Padded clips'), ('bose-tight-clips', 'Bose tight clips');");
 
             // Data. Step 1 (electronics flashed, id 1) for every unit that has been confirmed: the time is its ManufacturedAt,
             // the account the first Confirmed event's. Source 2 = Backfill.
@@ -215,19 +203,19 @@ namespace Intelimensa.Accounts.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "ElectrodeParts");
+                name: "CatalogChanges");
+
+            migrationBuilder.DropTable(
+                name: "CatalogChildren");
+
+            migrationBuilder.DropTable(
+                name: "CatalogSupersessions");
 
             migrationBuilder.DropTable(
                 name: "ProductionSteps");
 
             migrationBuilder.DropTable(
-                name: "ElectrodeAssemblies");
-
-            migrationBuilder.DropTable(
-                name: "MountingTypes");
-
-            migrationBuilder.DropTable(
-                name: "ElectrodeSets");
+                name: "CatalogItems");
 
             migrationBuilder.DropColumn(
                 name: "Step",

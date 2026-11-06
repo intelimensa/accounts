@@ -1,0 +1,15 @@
+@model Intelimensa.Accounts.Manufacturing.TreeNode
+@* An assembly's contents as nested lists: part number, name, the count in its parent, and the total across the whole tree. *@
+<ul class="list-unstyled mb-0 ps-3">
+@foreach (var child in Model.Children)
+{
+    <li>
+        <span class="font-monospace">@child.Item.PartNo</span> @child.Item.Name
+        <span class="text-muted">&times; @child.Count@(child.Total != child.Count ? $" ({child.Total} in all)" : "")</span>
+        @if (child.Item.IsAssembly)
+        {
+            <partial name="_CatalogTree" model="child" />
+        }
+    </li>
+}
+</ul>
